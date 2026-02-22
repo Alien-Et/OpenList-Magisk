@@ -91,52 +91,11 @@ jobs:
             echo "EOF"
           } >> $GITHUB_ENV
 
-      # 检查当前模块版本
-      - name: 检查当前模块版本
-        id: check_version
+      # 直接设置构建标志，每次都构建
+      - name: 设置构建标志
         run: |
-          if [ -f update.json ]; then
-            CURRENT_VERSION=$(grep '"version":' update.json | sed -E 's/.*"version":\s*"([^"]+)".*/\1/')
-            echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_ENV
-          else
-            echo "CURRENT_VERSION=none" >> $GITHUB_ENV
-          fi
-
-      # 比较版本并决定是否构建
-      - name: 检查是否需要构建
-        id: should_build
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # 检查版本是否一致
-          VERSION_MATCH=false
-          if [ "${{ env.CURRENT_VERSION }}" != "none" ] && [ "${{ env.OPENLIST_VERSION }}" = "${{ env.CURRENT_VERSION }}" ]; then
-            VERSION_MATCH=true
-          fi
-          
-          # 检查 Release 是否存在
-          RELEASE_EXISTS=false
-          if [ "$VERSION_MATCH" = "true" ]; then
-            if gh release view "${{ env.OPENLIST_VERSION }}-test" &>/dev/null; then
-              RELEASE_EXISTS=true
-            fi
-          fi
-          
-          # 决定是否构建
-          if [ "${{ env.CURRENT_VERSION }}" = "none" ] || [ "${{ env.OPENLIST_VERSION }}" != "${{ env.CURRENT_VERSION }}" ] || [ "$RELEASE_EXISTS" = "false" ]; then
-            echo "需要构建新模块："
-            if [ "${{ env.CURRENT_VERSION }}" = "none" ]; then
-              echo "- 当前版本不存在，首次构建"
-            elif [ "${{ env.OPENLIST_VERSION }}" != "${{ env.CURRENT_VERSION }}" ]; then
-              echo "- 版本不匹配：OpenList 版本 ${{ env.OPENLIST_VERSION }}，当前模块版本 ${{ env.CURRENT_VERSION }}"
-            elif [ "$RELEASE_EXISTS" = "false" ]; then
-              echo "- 版本匹配但 Test Release 不存在"
-            fi
-            echo "SHOULD_BUILD=true" >> $GITHUB_ENV
-          else
-            echo "模块版本已是最新 (${{ env.OPENLIST_VERSION }}) 且 Test Release 存在，无需构建"
-            echo "SHOULD_BUILD=false" >> $GITHUB_ENV
-          fi
+          echo "SHOULD_BUILD=true" >> $GITHUB_ENV
+          echo "每次触发都执行构建，不进行版本比对"
 
       # 同步 OpenList 二进制文件
       - name: 同步 OpenList 二进制文件
