@@ -228,8 +228,9 @@ jobs:
           # 确保在 test 分支上
           git checkout -b test || git checkout test
           
-          # 拉取远程更改以避免冲突
-          git pull origin test --ff || echo "无法快速合并，继续执行"
+          # 强制重置本地分支到远程分支，避免冲突
+          git fetch origin test
+          git reset --hard origin/test
           
           # 提交更改
           git config user.name "GitHub Actions"
