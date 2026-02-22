@@ -198,10 +198,20 @@ if [ -f "$MODROOT/service.sh" ] && [ -f "$MODROOT/action.sh" ]; then
     sed -i 's|__PLACEHOLDER_BINARY_PATH__|'"$BINARY_SERVICE_PATH"'|g' "$MODROOT/action.sh"
     sed -i 's|__PLACEHOLDER_DATA_DIR__|'"$DATA_DIR"'|g' "$MODROOT/service.sh"
 
+    # 更新 web UI 中的占位符
+    if [ -f "$MODROOT/webroot/index.html" ]; then
+        # 对于 web UI，使用实际路径（不是带 $MODDIR 的路径）
+        WEB_BINARY_PATH=$(echo "$BINARY_SERVICE_PATH" | sed 's|\$MODDIR|'"$MODROOT"'|g')
+        sed -i 's|__PLACEHOLDER_BINARY_PATH__|'"$WEB_BINARY_PATH"'|g' "$MODROOT/webroot/index.html"
+        sed -i 's|__PLACEHOLDER_DATA_DIR__|'"$DATA_DIR"'|g' "$MODROOT/webroot/index.html"
+    fi
+
     # 验证更新是否成功 - 检查占位符是否被正确替换
     if ! grep -q "__PLACEHOLDER_BINARY_PATH__" "$MODROOT/service.sh" && \
        ! grep -q "__PLACEHOLDER_BINARY_PATH__" "$MODROOT/action.sh" && \
-       ! grep -q "__PLACEHOLDER_DATA_DIR__" "$MODROOT/service.sh"; then
+       ! grep -q "__PLACEHOLDER_DATA_DIR__" "$MODROOT/service.sh" && \
+       ( ! [ -f "$MODROOT/webroot/index.html" ] || ! grep -q "__PLACEHOLDER_BINARY_PATH__" "$MODROOT/webroot/index.html" ) && \
+       ( ! [ -f "$MODROOT/webroot/index.html" ] || ! grep -q "__PLACEHOLDER_DATA_DIR__" "$MODROOT/webroot/index.html" ); then
         ui_print "✅ 配置更新成功"
     else
         ui_print "❌ 配置更新失败"

@@ -1,6 +1,6 @@
-{
+﻿{
     "version": "v4.1.10",
     "versionCode": 4110,
-    "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/v4.1.10/openlist-magisk-v4.1.10.zip",
-    "changelog": "https://github.com/Alien-Et/OpenList-Magisk/raw/main/OpenList-Magisk/CHANGELOG.md"
+    "zipUrl": "https://github.com/OpenListTeam/OpenList-Magisk/releases/download/v4.1.10/openlist-magisk-v4.1.10.zip",
+    "changelog": "https://github.com/OpenListTeam/OpenList-Magisk/raw/main/OpenList-Magisk/CHANGELOG.md"
 }
