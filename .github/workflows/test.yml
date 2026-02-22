@@ -21,6 +21,9 @@ jobs:
       # 检出仓库代码
       - name: 检出仓库代码
         uses: actions/checkout@v4
+        with:
+          ref: test
+          fetch-depth: 0
 
       # 安装依赖工具
       - name: 安装依赖
@@ -222,6 +225,9 @@ jobs:
           mkdir -p OpenList-Magisk
           echo "${{ env.OPENLIST_CHANGELOG }}" > OpenList-Magisk/CHANGELOG.md
 
+          # 确保在 test 分支上
+          git checkout -b test || git checkout test
+          
           # 提交更改
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
