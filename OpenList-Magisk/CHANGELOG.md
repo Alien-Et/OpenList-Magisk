@@ -1,4 +1,4 @@
-﻿### &nbsp;&nbsp;&nbsp;🚀 Features
+### &nbsp;&nbsp;&nbsp;🚀 Features
 
 - **123pan**:
   - Add offline download &nbsp;-&nbsp; by @mcxiedidi in https://github.com/OpenListTeam/OpenList/issues/1911 [<samp>(642ac)</samp>](https://github.com/OpenListTeam/OpenList/commit/642acf8b)
@@ -38,7 +38,7 @@
 - **drivers/quark**:
   - Apply html escaping in quark &nbsp;-&nbsp; by @mkitsdts in https://github.com/OpenListTeam/OpenList/issues/2046 [<samp>(27732)</samp>](https://github.com/OpenListTeam/OpenList/commit/27732ccc)
 - **drivers/seafile**:
-  - Object not found when RootFolderPath != "/" &nbsp;-&nbsp; by @Khoray in https://github.com/OpenListTeam/OpenList/issues/2010 [<samp>(a2573)</samp>](https://github.com/OpenListTeam/OpenList/commit/a2573fb2)
+  - Object not found when RootFolderPath != / &nbsp;-&nbsp; by @Khoray in https://github.com/OpenListTeam/OpenList/issues/2010 [<samp>(a2573)</samp>](https://github.com/OpenListTeam/OpenList/commit/a2573fb2)
 - **drivers/strm**:
   - Delete extra local directories in sync mode &nbsp;-&nbsp; by @sevxn007 in https://github.com/OpenListTeam/OpenList/issues/1980 [<samp>(ea4b5)</samp>](https://github.com/OpenListTeam/OpenList/commit/ea4b5e32)
 - **fs**:
