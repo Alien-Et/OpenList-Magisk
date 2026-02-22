@@ -228,6 +228,9 @@ jobs:
           # 确保在 test 分支上
           git checkout -b test || git checkout test
           
+          # 拉取远程更改以避免冲突
+          git pull origin test --ff || echo "无法快速合并，继续执行"
+          
           # 提交更改
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
