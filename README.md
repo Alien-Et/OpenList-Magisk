@@ -15,9 +15,11 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - **数据目录可选**：支持两种数据存储位置
   - /data/adb/openlist/
   - /storage/emulated/0/Android/openlist/
+- **自动数据迁移**：切换数据目录时自动迁移重要数据文件
 - **密码定制**：提供初始密码设置选项
 - **动态服务管理**：通过 Magisk/KernelSU 的"动作"按钮一键控制服务
 - **智能网络适配**：自动识别 WiFi 和移动网络 IP
+- **现代化 Web UI**：精美的管理界面，支持服务控制、网络信息显示等
 - **日志支持**：详细的运行日志记录
 
 ## 截图展示
@@ -29,7 +31,7 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 ## 系统要求
 
 - Android 设备（支持 ARM 或 ARM64 架构）
-- Magisk v20.4 或更高版本，或 KernelSU
+- Magisk v20.4 或更高版本，或 KernelSU，或 APatch
 - Root 权限
 
 ## 框架兼容性
@@ -74,7 +76,7 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
      - 选择是否修改默认密码为 admin
 
 3. **完成安装**
-   - 等待安装完成
+   - 等待安装完成（数据迁移会自动执行）
    - 重启设备
 
 ## 使用说明
@@ -86,6 +88,16 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
   - 运行中：显示访问地址和数据目录
   - 已停止：显示启动提示
 
+### Web UI 管理
+- 通过 Root 管理器的文件浏览器打开 `webroot/index.html`
+- 功能包括：
+  - 服务状态显示
+  - 服务启停控制
+  - 密码修改和重置
+  - 网络模式和 IP 地址显示
+  - 进程 PID 显示
+  - 运行日志查看
+
 ### 访问方式
 - Web 界面访问：`http://<设备IP>:5244`
 - 初始密码：查看数据目录下的 `初始密码.txt`
@@ -94,6 +106,74 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - 默认数据目录：`/data/adb/openlist/`
 - 日志文件位置：与数据目录相同
 - 密码文件：`初始密码.txt`
+
+## 数据迁移
+
+模块支持自动数据迁移功能，确保在切换数据目录时不会丢失重要数据：
+
+### 自动迁移逻辑
+
+**触发条件**：
+- 安装时选择与之前不同的数据目录
+- 源目录存在需要迁移的数据文件
+- 目标目录尚未有数据文件
+
+**迁移流程**：
+1. **检测源目录**：检查源目录是否存在需要迁移的数据文件
+2. **检测目标目录**：确保目标目录不存在相同的数据文件
+3. **创建目标目录**：如果目标目录不存在，自动创建
+4. **执行迁移**：复制重要数据文件到目标目录
+5. **验证迁移**：检查文件是否成功复制
+6. **删除旧目录**：迁移成功后，强制删除整个源目录（包括所有文件）
+
+**迁移的文件**：
+- `data.db` - 主数据文件
+- `data.db-shm` - 共享内存文件
+- `data.db-wal` - 预写日志文件
+- `初始密码.txt` - 密码文件
+
+**注意**：迁移完成后，旧目录会被完全删除，包括其中未被迁移的其他文件。如有需要保留的文件，请提前备份。
+
+### 迁移场景说明
+
+**场景1**：从 `/data/adb/openlist` 迁移到 `/sdcard/Android/openlist`
+- 检测 `/data/adb/openlist` 目录是否存在数据文件
+- 确保 `/sdcard/Android/openlist` 目录为空
+- 复制数据文件到新目录
+- 删除整个 `/data/adb/openlist` 目录
+
+**场景2**：从 `/sdcard/Android/openlist` 迁移到 `/data/adb/openlist`
+- 检测 `/sdcard/Android/openlist` 目录是否存在数据文件
+- 确保 `/data/adb/openlist` 目录为空
+- 复制数据文件到新目录
+- 删除整个 `/sdcard/Android/openlist` 目录
+
+**场景3**：目标目录已有数据
+- 检测到目标目录已有数据文件
+- 跳过迁移操作，避免覆盖现有数据
+- 旧目录保持不变
+
+**场景4**：源目录无数据
+- 检测到源目录没有需要迁移的数据文件
+- 跳过迁移操作
+
+### 手动迁移
+
+如果自动迁移失败，可手动执行以下步骤：
+
+1. **复制数据文件**：
+   - 从源目录复制 `data.db`、`data.db-shm`、`data.db-wal` 和 `初始密码.txt` 到新目录
+
+2. **更新配置**：
+   - 确保新目录的权限正确
+   - 重启设备使新配置生效
+
+3. **验证迁移**：
+   - 检查服务是否正常运行
+   - 确认数据是否完整保留
+
+4. **清理旧目录**：
+   - 确认迁移成功后，手动删除旧目录
 
 ## 故障排除
 
@@ -114,6 +194,11 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
    - 确认数据目录可写
    - 查看详细日志
 
+4. **Web UI 无法正常显示**
+   - 确认模块已正确安装
+   - 检查 webroot 目录是否存在
+   - 重启设备后重试
+
 ### 手动操作
 - 停止服务：`su -c pkill -f openlist`
 - 启动服务：`su -c /data/adb/modules/openlist/service.sh`
@@ -132,11 +217,11 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - **修复** sed 替换时变量被错误展开的问题
 - **优化** action.sh 启停服务的输出提示信息
 - **改进** 移除冗余的占位符验证逻辑
-
-## 数据迁移说明
-1. 在安装时选择新的数据目录
-2. 手动将现有数据迁移到新目录
-3. 更新 config.json 中的相关路径
+- **新增** 自动数据迁移功能，切换数据目录时自动迁移重要文件
+- **新增** 现代化 Web UI，支持服务控制、网络信息显示等
+- **修复** 运行状态检测逻辑，确保正确显示服务状态
+- **修复** 网络模式检测和 IP 地址获取逻辑
+- **修复** 密码修改和重置功能
 
 ## 贡献
 - 欢迎提交 Issue 和 Pull Request
