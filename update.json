@@ -1,6 +1,6 @@
 {
-    "version": "v4.1.10",
-    "versionCode": 4110,
-    "zipUrl": "https://github.com/OpenListTeam/OpenList-Magisk/releases/download/v4.1.10/openlist-magisk-v4.1.10.zip",
-    "changelog": "https://github.com/OpenListTeam/OpenList-Magisk/raw/main/OpenList-Magisk/CHANGELOG.md"
+  "version": "4.1.10-1",
+  "versionCode": 41101,
+  "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/v4.1.10-1/openlist-magisk-v4.1.10-test.zip",
+  "changelog": "\n\n### 分支测试版，增加WEBUI功能，解决了main分支actions点击异常的bug。\n### 当前WEBUI对于Magisk用户可能没有入口，需要Magisk用户自行下载ksuwebui这个app（好像是叫作这个）。\n### 当前只用Apatch管理器测试没啥问题，WEBUI目前不太完善..比如在WEBUI面板启动或关闭程序并不会更新管理器的module.prop文件。（累了困了毁灭吧！！懒得弄。。下次一定）\n### ksu和Magisk用户自行测试，有问题到ISSUE反馈。\n### WEBUI还未实现功能：WEBUI回退openlist版本、WEBUI升级openlist版本、懒得弄。。下次一定。。\n\n### 增加安装脚本自动迁移数据目录逻辑\n\n**触发条件**：\n- 安装时选择与之前不同的数据目录\n- 源目录存在需要迁移的数据文件\n- 目标目录尚未有数据文件\n\n**迁移流程**：\n1. **检测源目录**：检查源目录是否存在需要迁移的数据文件\n2. **检测目标目录**：确保目标目录不存在相同的数据文件\n3. **创建目标目录**：如果目标目录不存在，自动创建\n4. **执行迁移**：复制重要数据文件到目标目录\n5. **验证迁移**：检查文件是否成功复制\n6. **删除旧目录**：迁移成功后，强制删除整个源目录（包括所有文件）\n\n**迁移的文件**：\n- `data.db` - 主数据文件\n- `data.db-shm` - 共享内存文件\n- `data.db-wal` - 预写日志文件\n- `初始密码.txt` - 密码文件\n\n**注意**：迁移完成后，旧目录会被完全删除，包括其中未被迁移的其他文件。如有需要保留的文件，请提前备份。\n\n### v4.1.10 (2026-02-23)\n- **修复** 服务重启时页面卡住的问题\n- **新增** 实时日志监控功能，自动跟踪和显示服务运行日志\n- **新增** 双卡设备 IP 地址分别显示功能，不再挤在一起\n- **优化** 服务控制函数，添加超时保护和错误处理\n- **优化** 网络检测逻辑，提高 IP 地址获取成功率\n\n### v4.1.10 (2026-02-22)\n- **修复** versionCode 计算逻辑，支持三位版本号 (v4.1.10 → 4110)\n- **修复** 安装脚本占位符替换问题\n- **修复** sed 替换时变量被错误展开的问题\n- **优化** action.sh 启停服务的输出提示信息\n- **改进** 移除冗余的占位符验证逻辑\n- **新增** 自动数据迁移功能，切换数据目录时自动迁移重要文件\n- **新增** 现代化 Web UI，支持服务控制、网络信息显示等\n- **修复** 运行状态检测逻辑，确保正确显示服务状态\n- **修复** 网络模式检测和 IP 地址获取逻辑\n- **修复** 密码修改和重置功能"
 }
