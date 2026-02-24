@@ -3,6 +3,25 @@
 [![Release](https://img.shields.io/github/v/release/Alien-Et/OpenList-Magisk)](https://github.com/Alien-Et/OpenList-Magisk/releases)
 [![License](https://img.shields.io/github/license/Alien-Et/OpenList-Magisk)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/LICENSE)
 
+## 测试版说明
+注意：当前为测试版，主要增加 WEBUI 功能，解决了 main 分支 actions 点击异常的 bug。**
+> **
+
+### 兼容性说明
+- **Magisk 用户**：可能没有 WEBUI 入口，需要自行下载 `ksuwebui` 应用辅助
+- **KernelSU 用户**：请自行测试，如有问题到 ISSUE 反馈
+- **APatch 用户**：已测试，基本功能正常
+
+### WEBUI 功能说明
+- **已实现**：服务状态显示、启停控制、密码修改、网络信息显示、进程 PID 显示、实时日志监控
+- **未实现**：WEBUI 回退 OpenList 版本、WEBUI 升级 OpenList 版本（下次一定）
+
+### 已知问题
+- WEBUI 面板启动或关闭程序并不会更新管理器的 module.prop 文件
+- WEBUI 功能尚未完全完善，后续会持续优化
+
+## 项目介绍
+
 OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件服务器集成到 Android 系统中，通过 Magisk、KernelSU 或 APatch 以系统化方式运行，支持 ARM 和 ARM64 架构。
 
 ## 功能亮点
