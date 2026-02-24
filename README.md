@@ -232,6 +232,7 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 ## 更新日志
 
 ### v4.1.10.1 (2026-02-24)
+- **新增** 现代化 Web UI 功能，支持服务状态显示、启停控制、密码修改、网络信息显示等
 - **修复** GitHub Actions 工作流配置，支持 4 位版本号格式
 - **优化** 版本代码计算逻辑，确保 4 位版本号正确处理
 - **改进** 工作流执行流程，提高构建稳定性
