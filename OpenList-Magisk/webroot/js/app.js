@@ -881,66 +881,6 @@ const App = {
     
     // 设置事件监听器
     setupEventListeners() {
-        this.setupPullToRefresh();
-    },
-    
-    // 下拉刷新
-    setupPullToRefresh() {
-        const container = document.getElementById('app-container');
-        const refreshEl = document.getElementById('pull-refresh');
-        
-        if (!container || !refreshEl) {
-            this.error('Pull refresh elements not found');
-            return;
-        }
-        
-        let startY = 0;
-        let pulling = false;
-        
-        container.addEventListener('touchstart', (e) => {
-            if (container.scrollTop === 0) {
-                startY = e.touches[0].clientY;
-                pulling = true;
-            }
-        }, { passive: true });
-        
-        container.addEventListener('touchmove', (e) => {
-            if (!pulling) return;
-            
-            const currentY = e.touches[0].clientY;
-            const distance = currentY - startY;
-            
-            if (distance > 0 && distance < 100) {
-                refreshEl.style.display = 'flex';
-                refreshEl.style.transform = `translateY(${Math.min(distance * 0.5, 60)}px)`;
-                
-                if (distance > 80) {
-                    refreshEl.classList.add('ready');
-                } else {
-                    refreshEl.classList.remove('ready');
-                }
-            }
-        }, { passive: true });
-        
-        container.addEventListener('touchend', () => {
-            if (!pulling) return;
-            
-            const distance = parseInt(refreshEl.style.transform?.replace('translateY(', '') || 0);
-            
-            if (distance > 40) {
-                refreshEl.classList.add('refreshing');
-                this.refreshAll();
-                this.showToast('刷新完成', 'success');
-            }
-            
-            refreshEl.style.transform = 'translateY(0)';
-            setTimeout(() => {
-                refreshEl.classList.remove('refreshing', 'ready');
-                refreshEl.style.display = 'none';
-            }, 500);
-            
-            pulling = false;
-        }, { passive: true });
     },
     
     // 显示提示
