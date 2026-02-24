@@ -1,0 +1,152 @@
+name: 标签触发打包 OpenList Magisk 模块
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # 匹配 vX.Y.Z 格式的标签
+      - 'v*.*.*.*'  # 匹配 vX.Y.Z.W 格式的标签
+      - 'v*.*.*-*'  # 匹配 vX.Y.Z-* 格式的预发布标签
+
+permissions:
+  contents: write  # 允许创建 Release
+  actions: read    # 允许读取 Actions 状态
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 检出仓库代码
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      # 安装依赖工具
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl zip jq gh
+
+      # 获取当前 module.prop 中的版本信息
+      - name: 获取当前版本信息
+        id: current_version
+        run: |
+          if [ -f OpenList-Magisk/module.prop ]; then
+            CURRENT_VERSION=$(grep '^version=' OpenList-Magisk/module.prop | sed 's/^version=//')
+            CURRENT_VERSION_CODE=$(grep '^versionCode=' OpenList-Magisk/module.prop | sed 's/^versionCode=//')
+            echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_ENV
+            echo "CURRENT_VERSION_CODE=$CURRENT_VERSION_CODE" >> $GITHUB_ENV
+            echo "当前版本: $CURRENT_VERSION (code: $CURRENT_VERSION_CODE)"
+          else
+            echo "CURRENT_VERSION=none" >> $GITHUB_ENV
+            echo "CURRENT_VERSION_CODE=0" >> $GITHUB_ENV
+            echo "当前无版本信息，首次构建"
+          fi
+
+      # 从标签中提取版本信息
+      - name: 从标签中提取版本信息
+        id: tag_version
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/}
+          echo "TAG_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          echo "标签版本: $TAG_VERSION"
+          
+          # 生成版本代码（支持 3 位或 4 位版本号，包括预发布版本）
+          VERSION_NUM=$(echo "$TAG_VERSION" | tr -d 'v' | cut -d'-' -f1)
+          
+          # 检查版本号位数
+          VERSION_PARTS=$(echo "$VERSION_NUM" | awk -F. '{print NF}')
+          
+          if [ "$VERSION_PARTS" -eq 3 ]; then
+            # 3 位版本号：v4.1.11 → 4111
+            TAG_VERSION_CODE=$(echo "$VERSION_NUM" | awk -F. '{print $1 * 1000 + $2 * 100 + $3}')
+          elif [ "$VERSION_PARTS" -eq 4 ]; then
+            # 4 位版本号：v4.1.11.1 → 41111
+            TAG_VERSION_CODE=$(echo "$VERSION_NUM" | awk -F. '{print $1 * 10000 + $2 * 1000 + $3 * 10 + $4}')
+          else
+            echo "::error::版本号格式不正确，只支持 3 位或 4 位版本号"
+            exit 1
+          fi
+          
+          # 检查是否为预发布版本
+          if [[ "$TAG_VERSION" == *"-"* ]]; then
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            echo "此标签为预发布版本"
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+            echo "此标签为正式版本"
+          fi
+          
+          echo "TAG_VERSION_CODE=$TAG_VERSION_CODE" >> $GITHUB_ENV
+          echo "标签版本代码: $TAG_VERSION_CODE"
+
+      # 比较版本号并决定是否构建
+      - name: 比较版本并决定是否构建
+        id: should_build
+        run: |
+          if [ "${{ env.CURRENT_VERSION }}" = "none" ]; then
+            echo "首次构建，开始打包"
+            echo "SHOULD_BUILD=true" >> $GITHUB_ENV
+          else
+            # 比较版本代码
+            if [ "${{ env.TAG_VERSION_CODE }}" -gt "${{ env.CURRENT_VERSION_CODE }}" ]; then
+              echo "标签版本 ($TAG_VERSION) 大于当前版本 ($CURRENT_VERSION)，开始打包"
+              echo "SHOULD_BUILD=true" >> $GITHUB_ENV
+            else
+              echo "标签版本 ($TAG_VERSION) 不大于当前版本 ($CURRENT_VERSION)，跳过打包"
+              echo "SHOULD_BUILD=false" >> $GITHUB_ENV
+            fi
+          fi
+
+      # 同步 OpenList 二进制文件（如果需要）
+      - name: 同步 OpenList 二进制文件
+        if: env.SHOULD_BUILD == 'true'
+        run: |
+          # 这里可以添加同步二进制文件的逻辑
+          # 例如下载最新的 OpenList 二进制文件
+          echo "同步 OpenList 二进制文件..."
+          # 暂时跳过，使用现有二进制文件
+
+      # 打包模块
+      - name: 打包模块
+        if: env.SHOULD_BUILD == 'true'
+        run: |
+          cd OpenList-Magisk
+          zip -r ../openlist-magisk-${{ env.TAG_VERSION }}.zip .
+          cd ..
+          
+          echo "模块打包完成: openlist-magisk-${{ env.TAG_VERSION }}.zip"
+
+      # 创建 Release
+      - name: 创建 Release
+        if: env.SHOULD_BUILD == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 准备 Release 说明
+          RELEASE_NOTES="OpenList Magisk 模块 ${{ env.TAG_VERSION }}"
+          
+          # 创建 Release（根据标签是否包含 - 决定是否为预发布版本）
+          gh release create "${{ env.TAG_VERSION }}" \
+            --title "OpenList Magisk Module ${{ env.TAG_VERSION }}" \
+            --notes "$RELEASE_NOTES" \
+            --draft=false \
+            --prerelease=${{ env.IS_PRERELEASE }} \
+            "openlist-magisk-${{ env.TAG_VERSION }}.zip"
+          
+          echo "Release 创建成功！"
+
+      # 显示打包结果
+      - name: 显示打包结果
+        if: env.SHOULD_BUILD == 'true'
+        run: |
+          ls -la *.zip
+          echo "打包完成！Release 已创建。"
+
+      # 上传打包文件作为 Artifact
+      - name: 上传打包文件
+        if: env.SHOULD_BUILD == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openlist-magisk-module
+          path: openlist-magisk-${{ env.TAG_VERSION }}.zip
+          retention-days: 7
