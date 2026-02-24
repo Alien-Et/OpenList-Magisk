@@ -3,9 +3,6 @@
 [![Release](https://img.shields.io/github/v/release/Alien-Et/OpenList-Magisk)](https://github.com/Alien-Et/OpenList-Magisk/releases)
 [![License](https://img.shields.io/github/license/Alien-Et/OpenList-Magisk)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/LICENSE)
 
-## 测试版说明
-> **注意：当前v4.1.10.2为测试版，主要增加 WEBUI 功能，解决了 main 分支 actions 点击异常的 bug。**
-> **
 
 ### 兼容性说明
 - **Magisk 用户**：可能没有 WEBUI 入口，需要自行下载 `ksuwebui` 应用辅助
