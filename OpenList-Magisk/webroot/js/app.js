@@ -1048,6 +1048,14 @@ async function changePassword() {
             App.error('Failed to save password to initial password file:', writeResult);
         }
         
+        // 更新 module.prop 文件以显示最新密码
+        const statusResult = await App.checkServiceStatus();
+        if (statusResult.running) {
+            await App.updateModuleProp('running', statusResult.pid);
+        } else {
+            await App.updateModuleProp('stopped');
+        }
+        
         App.showToast('密码修改成功', 'success');
         input.value = '';
     } else {
@@ -1072,6 +1080,14 @@ async function resetPassword() {
             App.log('Password saved to initial password file');
         } else {
             App.error('Failed to save password to initial password file:', writeResult);
+        }
+        
+        // 更新 module.prop 文件以显示最新密码
+        const statusResult = await App.checkServiceStatus();
+        if (statusResult.running) {
+            await App.updateModuleProp('running', statusResult.pid);
+        } else {
+            await App.updateModuleProp('stopped');
         }
         
         App.showToast('密码已重置为: admin', 'success');
