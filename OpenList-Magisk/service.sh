@@ -266,8 +266,8 @@ if [ $ELAPSED -ge $MAX_WAIT ]; then
     log "警告: 系统启动超时，继续尝试启动 openlist"
 fi
 
-log "启动 OpenList: $OPENLIST_BINARY server --log-level=info --data $DATA_DIR"
-$OPENLIST_BINARY server --log-level=info --data "$DATA_DIR" &
+log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
+$OPENLIST_BINARY server --data "$DATA_DIR" &
 OPENLIST_PID=$!
 
 if ps -p $OPENLIST_PID >/dev/null || pgrep -f "$OPENLIST_BINARY server --data" >/dev/null; then
@@ -275,7 +275,7 @@ if ps -p $OPENLIST_PID >/dev/null || pgrep -f "$OPENLIST_BINARY server --data" >
     update_module_prop_running
 else
     log "错误: 无法启动 OpenList 服务"
-    OUTPUT=$($OPENLIST_BINARY server --log-level=info --data "$DATA_DIR" 2>&1)
+    OUTPUT=$($OPENLIST_BINARY server --data "$DATA_DIR" 2>&1)
     log "手动运行输出: $OUTPUT"
     exit 1
 fi
