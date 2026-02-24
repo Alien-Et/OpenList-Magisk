@@ -209,6 +209,24 @@ jobs:
           chmod 755 OpenList-Magisk/openlist-arm OpenList-Magisk/openlist-arm64
           
           echo "OpenList 二进制文件同步完成！"
+          
+          # 更新 module.prop
+          echo "更新 module.prop..."
+          sed -i "s/^version=.*/version=${{ env.TAG_VERSION }}/" OpenList-Magisk/module.prop
+          sed -i "s/^versionCode=.*/versionCode=${{ env.TAG_VERSION_CODE }}/" OpenList-Magisk/module.prop
+          
+          # 更新 update.json
+          echo "更新 update.json..."
+          cat > update.json << EOF
+          {
+              "version": "${{ env.TAG_VERSION }}",
+              "versionCode": ${{ env.TAG_VERSION_CODE }},
+              "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/${{ env.TAG_VERSION }}/openlist-magisk-${{ env.TAG_VERSION }}.zip",
+              "changelog": "https://github.com/Alien-Et/OpenList-Magisk/raw/main/OpenList-Magisk/CHANGELOG.md"
+          }
+          EOF
+          
+          echo "配置文件更新完成！"
 
       # 打包模块
       - name: 打包模块
