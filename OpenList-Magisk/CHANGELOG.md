@@ -1,9 +1,16 @@
 ## 更新日志
 
+- 支持KSU/Apatch管理器WEBUI前端界面，Magisk用户可以google搜索下载独立app“KSUWEBUI”来辅助操作前端界面。
+- 目前我只有Apatch管理器测试，KSU/Magisk用户自行测试兼容性问题，有问题到ISSUS提问。
+- 目前WEBUI前端的日志读取好像有问题，什么时候修复？下次一定！！！！
+
+### WEBUI 功能说明
+- **已实现**：服务状态显示、启停控制、密码修改、网络信息显示、进程 PID 显示、实时日志监控
+- **未实现**：WEBUI 回退 OpenList 版本、WEBUI 升级 OpenList 版本（下次一定！！！）
+
 ### v4.1.10.2 (2026-02-24)
 - **修复** 启动服务改用 exec 模式，避免 spawn 启动失败
 - **修复** 删除 --log-level=info 参数，解决二进制启动失败问题
-- **新增** GitHub Actions 工作流构建时自动同步标签版本到 module.prop 和 update.json
 - **修复** Web UI 前端无法更新状态到 root 管理器面板的问题
 - **优化** 进程检测逻辑，使用精确匹配方式与 service.sh 保持一致
 - **改进** Web UI 服务控制功能，确保启动/停止/重启时正确更新状态
