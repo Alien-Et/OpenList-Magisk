@@ -26,20 +26,44 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl zip jq gh
 
-      # 获取当前 module.prop 中的版本信息
-      - name: 获取当前版本信息
-        id: current_version
+      # 获取已发布的版本信息
+      - name: 获取已发布的版本信息
+        id: published_version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f OpenList-Magisk/module.prop ]; then
-            CURRENT_VERSION=$(grep '^version=' OpenList-Magisk/module.prop | sed 's/^version=//')
-            CURRENT_VERSION_CODE=$(grep '^versionCode=' OpenList-Magisk/module.prop | sed 's/^versionCode=//')
-            echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_ENV
-            echo "CURRENT_VERSION_CODE=$CURRENT_VERSION_CODE" >> $GITHUB_ENV
-            echo "当前版本: $CURRENT_VERSION (code: $CURRENT_VERSION_CODE)"
+          echo "获取已发布的版本信息..."
+          
+          # 尝试获取最新发布的版本
+          LATEST_RELEASE=$(gh release view --json tagName 2>/dev/null || echo "{}")
+          
+          if [[ "$LATEST_RELEASE" != "{}" ]]; then
+            PUBLISHED_VERSION=$(echo "$LATEST_RELEASE" | grep '"tagName":' | sed -E 's/.*"tagName":\s*"([^"]+)".*/\1/')
+            
+            # 从已发布版本中提取版本号（支持 3 位或 4 位版本号，包括预发布版本）
+            VERSION_NUM=$(echo "$PUBLISHED_VERSION" | tr -d 'v' | cut -d'-' -f1)
+            
+            # 检查版本号位数
+            VERSION_PARTS=$(echo "$VERSION_NUM" | awk -F. '{print NF}')
+            
+            if [ "$VERSION_PARTS" -eq 3 ]; then
+              # 3 位版本号：v4.1.11 → 4111
+              PUBLISHED_VERSION_CODE=$(echo "$VERSION_NUM" | awk -F. '{print $1 * 1000 + $2 * 100 + $3}')
+            elif [ "$VERSION_PARTS" -eq 4 ]; then
+              # 4 位版本号：v4.1.11.1 → 41111
+              PUBLISHED_VERSION_CODE=$(echo "$VERSION_NUM" | awk -F. '{print $1 * 10000 + $2 * 1000 + $3 * 10 + $4}')
+            else
+              echo "::warning::已发布版本号格式不正确，使用 0 作为版本代码"
+              PUBLISHED_VERSION_CODE=0
+            fi
+            
+            echo "PUBLISHED_VERSION=$PUBLISHED_VERSION" >> $GITHUB_ENV
+            echo "PUBLISHED_VERSION_CODE=$PUBLISHED_VERSION_CODE" >> $GITHUB_ENV
+            echo "已发布版本: $PUBLISHED_VERSION (code: $PUBLISHED_VERSION_CODE)"
           else
-            echo "CURRENT_VERSION=none" >> $GITHUB_ENV
-            echo "CURRENT_VERSION_CODE=0" >> $GITHUB_ENV
-            echo "当前无版本信息，首次构建"
+            echo "PUBLISHED_VERSION=none" >> $GITHUB_ENV
+            echo "PUBLISHED_VERSION_CODE=0" >> $GITHUB_ENV
+            echo "当前无已发布版本，首次构建"
           fi
 
       # 从标签中提取版本信息
@@ -83,28 +107,108 @@ jobs:
       - name: 比较版本并决定是否构建
         id: should_build
         run: |
-          if [ "${{ env.CURRENT_VERSION }}" = "none" ]; then
+          if [ "${{ env.PUBLISHED_VERSION }}" = "none" ]; then
             echo "首次构建，开始打包"
             echo "SHOULD_BUILD=true" >> $GITHUB_ENV
           else
             # 比较版本代码
-            if [ "${{ env.TAG_VERSION_CODE }}" -gt "${{ env.CURRENT_VERSION_CODE }}" ]; then
-              echo "标签版本 ($TAG_VERSION) 大于当前版本 ($CURRENT_VERSION)，开始打包"
+            if [ "${{ env.TAG_VERSION_CODE }}" -gt "${{ env.PUBLISHED_VERSION_CODE }}" ]; then
+              echo "标签版本 ($TAG_VERSION) 大于已发布版本 ($PUBLISHED_VERSION)，开始打包"
               echo "SHOULD_BUILD=true" >> $GITHUB_ENV
             else
-              echo "标签版本 ($TAG_VERSION) 不大于当前版本 ($CURRENT_VERSION)，跳过打包"
+              echo "标签版本 ($TAG_VERSION) 不大于已发布版本 ($PUBLISHED_VERSION)，跳过打包"
               echo "SHOULD_BUILD=false" >> $GITHUB_ENV
             fi
           fi
 
-      # 同步 OpenList 二进制文件（如果需要）
+      # 同步 OpenList 二进制文件
       - name: 同步 OpenList 二进制文件
         if: env.SHOULD_BUILD == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API_URL: https://api.github.com/repos/OpenListTeam/OpenList/releases/latest
         run: |
-          # 这里可以添加同步二进制文件的逻辑
-          # 例如下载最新的 OpenList 二进制文件
           echo "同步 OpenList 二进制文件..."
-          # 暂时跳过，使用现有二进制文件
+          
+          # 获取 OpenList 最新版本
+          for i in {1..3}; do
+            RESPONSE=$(curl -s -L -w "\n%{http_code}" -H "Authorization: Bearer $GITHUB_TOKEN" "$API_URL")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+            if [ "$HTTP_CODE" -eq 200 ] && [ -n "$BODY" ]; then
+              echo "成功获取 OpenList Release 数据"
+              break
+            fi
+            echo "尝试 $i 失败，HTTP 状态码: $HTTP_CODE"
+            sleep $((5 * i))
+          done
+          
+          # 提取下载链接
+          ARM_URL=$(echo "$BODY" | grep '"browser_download_url":' | grep 'openlist-android-arm.tar.gz' | sed -E 's/.*"([^"]+)".*/\1/')
+          ARM64_URL=$(echo "$BODY" | grep '"browser_download_url":' | grep 'openlist-android-arm64.tar.gz' | sed -E 's/.*"([^"]+)".*/\1/')
+          
+          if [ -z "$ARM_URL" ] || [ -z "$ARM64_URL" ]; then
+            echo "::error::无法提取二进制下载链接"
+            exit 1
+          fi
+          
+          # 下载并解压 ARM 版本
+          for i in {1..3}; do
+            if curl -L -o openlist-arm.tar.gz "$ARM_URL"; then
+              break
+            fi
+            echo "下载 ARM 版本失败，重试 $i/3"
+            sleep $((5 * i))
+          done
+          
+          if [ ! -f openlist-arm.tar.gz ]; then
+            echo "::error::下载 ARM 版本失败"
+            exit 1
+          fi
+          
+          tar -xzf openlist-arm.tar.gz
+          if [ ! -f openlist ]; then
+            echo "::error::解压 ARM 版本失败"
+            exit 1
+          fi
+          mv openlist openlist-arm
+          rm -f openlist-arm.tar.gz
+          
+          # 下载并解压 ARM64 版本
+          for i in {1..3}; do
+            if curl -L -o openlist-arm64.tar.gz "$ARM64_URL"; then
+              break
+            fi
+            echo "下载 ARM64 版本失败，重试 $i/3"
+            sleep $((5 * i))
+          done
+          
+          if [ ! -f openlist-arm64.tar.gz ]; then
+            echo "::error::下载 ARM64 版本失败"
+            exit 1
+          fi
+          
+          tar -xzf openlist-arm64.tar.gz
+          if [ ! -f openlist ]; then
+            echo "::error::解压 ARM64 版本失败"
+            exit 1
+          fi
+          mv openlist openlist-arm64
+          rm -f openlist-arm64.tar.gz
+          
+          # 移动二进制文件到模块目录
+          if [ ! -f openlist-arm ] || [ ! -f openlist-arm64 ]; then
+            echo "::error::二进制文件不存在"
+            exit 1
+          fi
+          
+          mv openlist-arm OpenList-Magisk/
+          mv openlist-arm64 OpenList-Magisk/
+          
+          # 设置权限
+          chmod 755 OpenList-Magisk/openlist-arm OpenList-Magisk/openlist-arm64
+          
+          echo "OpenList 二进制文件同步完成！"
 
       # 打包模块
       - name: 打包模块
