@@ -1,54 +1,47 @@
-### &nbsp;&nbsp;&nbsp;🚀 Features
+### 测试版，增加WEBUI功能，解决了main分支actions点击异常的bug。
+### 当前WEBUI对于Magisk用户可能没有入口，需要Magisk用户自行下载ksuwebui这个app（好像是叫作这个）。
+### 当前只用Apatch管理器测试没啥问题，WEBUI目前不太完善..比如在WEBUI面板启动或关闭程序并不会更新管理器的module.prop文件。（累了困了毁灭吧！！懒得弄。。下次一定）
+### ksu和Magisk用户自行测试，有问题到ISSUE反馈。
+### WEBUI还未实现功能：WEBUI回退openlist版本、WEBUI升级openlist版本、懒得弄。。下次一定。。
 
-- **123pan**:
-  - Add offline download &nbsp;-&nbsp; by @mcxiedidi in https://github.com/OpenListTeam/OpenList/issues/1911 [<samp>(642ac)</samp>](https://github.com/OpenListTeam/OpenList/commit/642acf8b)
-- **drivers**:
-  - Support getting disk usage of some drivers &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1905 [<samp>(744db)</samp>](https://github.com/OpenListTeam/OpenList/commit/744dbd5e)
-  - Add autoindex driver &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1978 [<samp>(f0578)</samp>](https://github.com/OpenListTeam/OpenList/commit/f057846e)
-- **drivers/cloudreve**:
-  - Implement GetDetails &nbsp;-&nbsp; by @xrgzs in https://github.com/OpenListTeam/OpenList/issues/1960 [<samp>(fca99)</samp>](https://github.com/OpenListTeam/OpenList/commit/fca993a8)
-- **drivers/cloudreve_v4**:
-  - Implement Getter interface &nbsp;-&nbsp; by @xrgzs in https://github.com/OpenListTeam/OpenList/issues/1937 [<samp>(5c82f)</samp>](https://github.com/OpenListTeam/OpenList/commit/5c82f552)
-- **drivers/mega**:
-  - Support getting disk usage &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1903 [<samp>(1f9a7)</samp>](https://github.com/OpenListTeam/OpenList/commit/1f9a7e3a)
-  - Support permanently deleting files &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1913 [<samp>(74799)</samp>](https://github.com/OpenListTeam/OpenList/commit/747993e2)
-- **drivers/webdav**:
-  - Add support for 302 redirects &nbsp;-&nbsp; by @xrgzs in https://github.com/OpenListTeam/OpenList/issues/1952 [<samp>(c6bd4)</samp>](https://github.com/OpenListTeam/OpenList/commit/c6bd4372)
+### 增加安装脚本自动迁移数据目录逻辑
 
-### &nbsp;&nbsp;&nbsp;🐞 Bug Fixes
+**触发条件**：
+- 安装时选择与之前不同的数据目录
+- 源目录存在需要迁移的数据文件
+- 目标目录尚未有数据文件
 
-- **api/remove**:
-  - Add validation for empty items in delete file list &nbsp;-&nbsp; by @datao2001 in https://github.com/OpenListTeam/OpenList/issues/1617 [<samp>(d685b)</samp>](https://github.com/OpenListTeam/OpenList/commit/d685bbfa)
-- **ci**:
-  - Change unchecked regex &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1993 [<samp>(27fdd)</samp>](https://github.com/OpenListTeam/OpenList/commit/27fdd03e)
-- **cloudreve**:
-  - Manually set path to avoid empty path &nbsp;-&nbsp; by @TwoOnefour in https://github.com/OpenListTeam/OpenList/issues/1933 [<samp>(0d99e)</samp>](https://github.com/OpenListTeam/OpenList/commit/0d99e16b)
-- **driver/quark_uc**:
-  - Fix display of non-compliant filenames &nbsp;-&nbsp; by @Cp0204 in https://github.com/OpenListTeam/OpenList/issues/2000 [<samp>(02aec)</samp>](https://github.com/OpenListTeam/OpenList/commit/02aec713)
-- **drivers/alias**:
-  - Default sort & substitute link &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1917 [<samp>(f0e53)</samp>](https://github.com/OpenListTeam/OpenList/commit/f0e53d18)
-- **drivers/alist_v3**:
-  - Failed to unmarshal MeResp &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1931 [<samp>(e1921)</samp>](https://github.com/OpenListTeam/OpenList/commit/e1921494)
-- **drivers/cloudreve_v4**:
-  - Add IsFolder attribute to Getter response &nbsp;-&nbsp; by @xrgzs in https://github.com/OpenListTeam/OpenList/issues/2035 [<samp>(29fcf)</samp>](https://github.com/OpenListTeam/OpenList/commit/29fcf590)
-- **drivers/ftp**:
-  - Failed to get objs &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1948 [<samp>(b553d)</samp>](https://github.com/OpenListTeam/OpenList/commit/b553dc35)
-- **drivers/github**:
-  - Failed to get objs &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1915 [<samp>(378e3)</samp>](https://github.com/OpenListTeam/OpenList/commit/378e37b0)
-- **drivers/quark**:
-  - Apply html escaping in quark &nbsp;-&nbsp; by @mkitsdts in https://github.com/OpenListTeam/OpenList/issues/2046 [<samp>(27732)</samp>](https://github.com/OpenListTeam/OpenList/commit/27732ccc)
-- **drivers/seafile**:
-  - Object not found when RootFolderPath != / &nbsp;-&nbsp; by @Khoray in https://github.com/OpenListTeam/OpenList/issues/2010 [<samp>(a2573)</samp>](https://github.com/OpenListTeam/OpenList/commit/a2573fb2)
-- **drivers/strm**:
-  - Delete extra local directories in sync mode &nbsp;-&nbsp; by @sevxn007 in https://github.com/OpenListTeam/OpenList/issues/1980 [<samp>(ea4b5)</samp>](https://github.com/OpenListTeam/OpenList/commit/ea4b5e32)
-- **fs**:
-  - Panic when failed to get storage details &nbsp;-&nbsp; by @KirCute in https://github.com/OpenListTeam/OpenList/issues/1964 [<samp>(85c69)</samp>](https://github.com/OpenListTeam/OpenList/commit/85c69d85)
-  - Handle non-existent destination directory in file transfer &nbsp;-&nbsp; by @Ironboxplus in https://github.com/OpenListTeam/OpenList/issues/1898 [<samp>(a79d8)</samp>](https://github.com/OpenListTeam/OpenList/commit/a79d8347)
-- **webdav/move**:
-  - Fix source file still exist after moving file by webdav &nbsp;-&nbsp; by @mkitsdts in https://github.com/OpenListTeam/OpenList/issues/1979 [<samp>(d8417)</samp>](https://github.com/OpenListTeam/OpenList/commit/d8417e05)
+**迁移流程**：
+1. **检测源目录**：检查源目录是否存在需要迁移的数据文件
+2. **检测目标目录**：确保目标目录不存在相同的数据文件
+3. **创建目标目录**：如果目标目录不存在，自动创建
+4. **执行迁移**：复制重要数据文件到目标目录
+5. **验证迁移**：检查文件是否成功复制
+6. **删除旧目录**：迁移成功后，强制删除整个源目录（包括所有文件）
 
-### &nbsp;&nbsp;&nbsp;🏎 Performance
+**迁移的文件**：
+- `data.db` - 主数据文件
+- `data.db-shm` - 共享内存文件
+- `data.db-wal` - 预写日志文件
+- `初始密码.txt` - 密码文件
 
-- **baidu_netdisk**: Reduce the number of file listing requests &nbsp;-&nbsp; by @hcrgm in https://github.com/OpenListTeam/OpenList/issues/2016 [<samp>(031b7)</samp>](https://github.com/OpenListTeam/OpenList/commit/031b719b)
+**注意**：迁移完成后，旧目录会被完全删除，包括其中未被迁移的其他文件。如有需要保留的文件，请提前备份。
 
-##### &nbsp;&nbsp;&nbsp;&nbsp;[View changes on GitHub](https://github.com/OpenListTeam/OpenList/compare/v4.1.9...v4.1.10)
+### v4.1.10 (2026-02-23)
+- **修复** 服务重启时页面卡住的问题
+- **新增** 实时日志监控功能，自动跟踪和显示服务运行日志
+- **新增** 双卡设备 IP 地址分别显示功能，不再挤在一起
+- **优化** 服务控制函数，添加超时保护和错误处理
+- **优化** 网络检测逻辑，提高 IP 地址获取成功率
+
+### v4.1.10 (2026-02-22)
+- **修复** versionCode 计算逻辑，支持三位版本号 (v4.1.10 → 4110)
+- **修复** 安装脚本占位符替换问题
+- **修复** sed 替换时变量被错误展开的问题
+- **优化** action.sh 启停服务的输出提示信息
+- **改进** 移除冗余的占位符验证逻辑
+- **新增** 自动数据迁移功能，切换数据目录时自动迁移重要文件
+- **新增** 现代化 Web UI，支持服务控制、网络信息显示等
+- **修复** 运行状态检测逻辑，确保正确显示服务状态
+- **修复** 网络模式检测和 IP 地址获取逻辑
+- **修复** 密码修改和重置功能
