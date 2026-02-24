@@ -299,9 +299,9 @@ const App = {
             return { success: true, output: 'Service already running', pid: status.pid, pids: status.pids };
         }
         
-        // 启动服务：二进制路径 server --data 数据目录
+        // 启动服务：二进制路径 server --log-level=info --data 数据目录 （使用spawn捕获输出）
         const dataDir = this.state.dataDir || '/data/adb/openlist';
-        const cmd = `"${this.state.binaryPath}" server --data "${dataDir}"`;
+        const cmd = `"${this.state.binaryPath}" server --log-level=info --data "${dataDir}"`;
         this.log('Starting service with command:', cmd);
         
         // 使用 spawn 启动服务并捕获输出
