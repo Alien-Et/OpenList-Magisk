@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/github/license/Alien-Et/OpenList-Magisk)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/LICENSE)
 
 ## 测试版说明
-注意：当前v4.10.1v4.10.1为测试版，主要增加 WEBUI 功能，解决了 main 分支 actions 点击异常的 bug。**
+注意：当前v4.10.1为测试版，主要增加 WEBUI 功能，解决了 main 分支 actions 点击异常的 bug。**
 > **
 
 ### 兼容性说明
