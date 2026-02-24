@@ -1,5 +1,5 @@
-### 测试版，增加WEBUI功能，解决了main分支actions点击异常的bug。
-### 当前WEBUI对于Magisk用户可能没有入口，需要Magisk用户自行下载ksuwebui这个app（好像是叫作这个）。
+### 测试版，增加WEBUI功能，解决了actions点击异常的bug。
+### 当前WEBUI对于Magisk用户可能没有入口，需要Magisk用户自行下载ksuwebui这个app
 ### 当前只用Apatch管理器测试没啥问题，WEBUI目前不太完善..比如在WEBUI面板启动或关闭程序并不会更新管理器的module.prop文件。（累了困了毁灭吧！！懒得弄。。下次一定）
 ### ksu和Magisk用户自行测试，有问题到ISSUE反馈。
 ### WEBUI还未实现功能：WEBUI回退openlist版本、WEBUI升级openlist版本、懒得弄。。下次一定。。
