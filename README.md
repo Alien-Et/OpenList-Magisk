@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/github/license/Alien-Et/OpenList-Magisk)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/LICENSE)
 
 ## 测试版说明
-注意：当前v4.1.10.1为测试版，主要增加 WEBUI 功能，解决了 main 分支 actions 点击异常的 bug。**
+> **注意：当前v4.1.10.2为测试版，主要增加 WEBUI 功能，解决了 main 分支 actions 点击异常的 bug。**
 > **
 
 ### 兼容性说明
@@ -262,6 +262,12 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - **维护位置**：`OpenList-Magisk/CHANGELOG.md` 文件
 
 ## 更新日志
+
+### v4.1.10.2 (2026-02-24)
+- **修复** module.prop 文件状态更新问题，使用 cat、echo、mv 命令替代 sed -i
+- **修复** 密码修改和重置功能，成功后自动写入初始密码文件
+- **优化** 进程检测逻辑，使用精确匹配方式与 service.sh 保持一致
+- **改进** Web UI 服务控制功能，确保启动/停止/重启时正确更新状态
 
 ### v4.1.10.1 (2026-02-24)
 - **新增** 现代化 Web UI 功能，支持服务状态显示、启停控制、密码修改、网络信息显示等
