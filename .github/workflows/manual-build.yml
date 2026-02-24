@@ -219,9 +219,9 @@ jobs:
           echo "更新 update.json..."
           cat > update.json << EOF
           {
-              "version": "${{ env.TAG_VERSION }}",
-              "versionCode": ${{ env.TAG_VERSION_CODE }},
-              "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/${{ env.TAG_VERSION }}/openlist-magisk-${{ env.TAG_VERSION }}.zip",
+              "version": "$TAG_VERSION",
+              "versionCode": $TAG_VERSION_CODE,
+              "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/$TAG_VERSION/openlist-magisk-$TAG_VERSION.zip",
               "changelog": "https://github.com/Alien-Et/OpenList-Magisk/raw/main/OpenList-Magisk/CHANGELOG.md"
           }
           EOF
