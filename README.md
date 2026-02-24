@@ -13,10 +13,6 @@
 - **已实现**：服务状态显示、启停控制、密码修改、网络信息显示、进程 PID 显示、实时日志监控
 - **未实现**：WEBUI 回退 OpenList 版本、WEBUI 升级 OpenList 版本（下次一定）
 
-### 已知问题
-- WEBUI 面板启动或关闭程序并不会更新管理器的 module.prop 文件
-- WEBUI 功能尚未完全完善，后续会持续优化
-
 ## 项目介绍
 
 OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件服务器集成到 Android 系统中，通过 Magisk、KernelSU 或 APatch 以系统化方式运行，支持 ARM 和 ARM64 架构。
