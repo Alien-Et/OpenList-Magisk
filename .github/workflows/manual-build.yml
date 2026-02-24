@@ -219,14 +219,22 @@ jobs:
           echo "更新 update.json..."
           cat > update.json << EOF
           {
-              "version": "$TAG_VERSION",
-              "versionCode": $TAG_VERSION_CODE,
-              "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/$TAG_VERSION/openlist-magisk-$TAG_VERSION.zip",
+              "version": "${{ env.TAG_VERSION }}",
+              "versionCode": ${{ env.TAG_VERSION_CODE }},
+              "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/${{ env.TAG_VERSION }}/openlist-magisk-${{ env.TAG_VERSION }}.zip",
               "changelog": "https://github.com/Alien-Et/OpenList-Magisk/raw/main/OpenList-Magisk/CHANGELOG.md"
           }
           EOF
           
           echo "配置文件更新完成！"
+
+          # 提交更改到仓库
+          echo "提交更改到仓库..."
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add OpenList-Magisk/module.prop update.json
+          git commit -m "chore: 更新版本信息到 $TAG_VERSION"
+          git push origin HEAD:main
 
       # 打包模块
       - name: 打包模块
