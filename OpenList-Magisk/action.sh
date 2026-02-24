@@ -34,7 +34,7 @@ BUSYBOX=$(find_busybox)
 
 # 核心函数：检查OpenList服务状态
 check_openlist_status() {
-    if "$BUSYBOX" pgrep -f "$OPENLIST_BINARY server" 2>/dev/null; then
+    if "$BUSYBOX" pgrep -f "$OPENLIST_BINARY" 2>/dev/null; then
         return 0  # 找到并运行中，返回成功，并打印出pid
     else
         return 1  # 未找到或未运行，返回失败

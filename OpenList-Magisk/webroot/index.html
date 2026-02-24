@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenList 管理面板</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- 占位符将在安装时替换 -->
+    <meta name="binary-path" content="__PLACEHOLDER_BINARY_PATH__">
+    <meta name="data-dir" content="__PLACEHOLDER_DATA_DIR__">
+</head>
+<body>
+    <div class="pull-refresh" id="pull-refresh">
+        <div class="pull-refresh-indicator">
+            <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20">
+                <path fill="currentColor" d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+            </svg>
+            <span class="pull-refresh-text">下拉刷新</span>
+        </div>
+    </div>
+    <div class="container" id="app-container">
+        <header>
+            <h1>
+                <svg class="svg-icon" viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                </svg>
+                OpenList 管理面板
+            </h1>
+        </header>
+
+        <main>
+            <section class="card">
+                <h2>
+                    <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20">
+                        <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                    服务状态
+                </h2>
+                <div class="status-info">
+                    <div class="info-item">
+                        <label>运行状态</label>
+                        <value id="serviceStatus">检测中...</value>
+                    </div>
+                    <div class="info-item">
+                        <label>进程 PID</label>
+                        <value id="servicePid">-</value>
+                    </div>
+                    <div class="info-item">
+                        <label>网络模式</label>
+                        <value id="networkMode">检测中...</value>
+                    </div>
+                    <div class="info-item">
+                        <label>IPv4 地址</label>
+                        <value class="copyable" id="ipv4Address" onclick="copyToClipboard(this)">-</value>
+                    </div>
+                    <div class="info-item">
+                        <label>IPv6 地址</label>
+                        <value class="copyable" id="ipv6Address" onclick="copyToClipboard(this)">-</value>
+                    </div>
+                    <div class="info-item" id="sim1Info" style="display: none;">
+                        <label>卡1 IPv4</label>
+                        <value class="copyable" id="sim1IPv4" onclick="copyToClipboard(this)">-</value>
+                    </div>
+                    <div class="info-item" id="sim1IPv6Info" style="display: none;">
+                        <label>卡1 IPv6</label>
+                        <value class="copyable" id="sim1IPv6" onclick="copyToClipboard(this)">-</value>
+                    </div>
+                    <div class="info-item" id="sim2Info" style="display: none;">
+                        <label>卡2 IPv4</label>
+                        <value class="copyable" id="sim2IPv4" onclick="copyToClipboard(this)">-</value>
+                    </div>
+                    <div class="info-item" id="sim2IPv6Info" style="display: none;">
+                        <label>卡2 IPv6</label>
+                        <value class="copyable" id="sim2IPv6" onclick="copyToClipboard(this)">-</value>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>
+                    <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20">
+                        <path fill="currentColor" d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+                    </svg>
+                    路径信息
+                </h2>
+                <div class="path-info">
+                    <div class="info-item">
+                        <label>二进制路径</label>
+                        <value class="copyable" id="binaryPath" onclick="copyToClipboard(this)">-</value>
+                    </div>
+                    <div class="info-item">
+                        <label>数据目录</label>
+                        <value class="copyable" id="dataPath" onclick="copyToClipboard(this)">-</value>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>
+                    <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20">
+                        <path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zM18 20H6V10h12v10z"/>
+                    </svg>
+                    账号密码
+                </h2>
+                <div class="password-section">
+                    <div class="input-group">
+                        <label>新密码</label>
+                        <input type="password" id="newPassword" placeholder="输入新密码">
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="changePassword()">
+                            <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16">
+                                <path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zM18 20H6V10h12v10z"/>
+                            </svg>
+                            修改密码
+                        </button>
+                        <button class="btn btn-warning" onclick="resetPassword()">
+                            <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16">
+                                <path fill="currentColor" d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                            </svg>
+                            重置密码
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>
+                    <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20">
+                        <path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                    </svg>
+                    服务控制
+                </h2>
+                <div class="control-buttons">
+                    <button class="btn btn-success" onclick="startService()">
+                        <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16">
+                            <path fill="currentColor" d="M8 5v14l11-7z"/>
+                        </svg>
+                        启动服务
+                    </button>
+                    <button class="btn btn-info" onclick="restartService()">
+                        <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16">
+                            <path fill="currentColor" d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                        </svg>
+                        重启服务
+                    </button>
+                    <button class="btn btn-danger" onclick="stopService()">
+                        <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16">
+                            <path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                        </svg>
+                        关闭服务
+                    </button>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>
+                    <svg class="svg-icon" viewBox="0 0 24 24" width="20" height="20">
+                        <path fill="currentColor" d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM16 18H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                    </svg>
+                    运行日志
+                </h2>
+                <div class="log-container">
+                    <pre id="logContent">加载日志中...</pre>
+                    <button class="btn btn-secondary" onclick="refreshLogs()">
+                        <svg class="svg-icon" viewBox="0 0 24 24" width="16" height="16">
+                            <path fill="currentColor" d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                        </svg>
+                        刷新日志
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>OpenList Magisk/KernelSU/APatch 模块管理面板</p>
+            <p id="lastUpdate">最后更新: -</p>
+        </footer>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

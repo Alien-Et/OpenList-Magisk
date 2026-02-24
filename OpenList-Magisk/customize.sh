@@ -21,7 +21,6 @@ ui_print "检测到架构: $ARCH"
 # 定义二进制文件名
 BINARY_NAME="openlist"
 
-# Code from NGA SDK (https://github.com/TianwanTW/NGA-SDK/blob/nga/src/shell/nga-utils.sh)
 until_key() {
     local eventCode
     while :; do
@@ -68,6 +67,7 @@ show_data_menu() {
     ui_print "1、data/adb/openlist"
     ui_print "2、Android/openlist"
     ui_print "━━━━━━━━━━━━━━━━━━━━━━"
+    ui_print "💡 支持自动迁移数据"
     ui_print "音量+ 确认  |  音量- 切换"
     ui_print "━━━━━━━━━━━━━━━━━━━━━━"
     ui_print "👉 当前选择：选项 $current"
@@ -147,6 +147,30 @@ esac
 
 # 创建安装目录
 mkdir -p "$BINARY_PATH"
+mkdir -p "$MODROOT/webroot"
+
+# 设置桥接脚本权限
+chmod 755 "$MODROOT/webroot/bridge.sh" 2>/dev/null
+
+# 设置桥接二进制权限
+chmod 755 "$MODROOT/webroot/bridge-arm" 2>/dev/null
+chmod 755 "$MODROOT/webroot/bridge-arm64" 2>/dev/null
+
+# 复制适合当前架构的桥接二进制
+if echo "$ARCH" | grep -q "arm64"; then
+    cp "$MODROOT/webroot/bridge-arm64" "$MODROOT/webroot/bridge" 2>/dev/null
+else
+    cp "$MODROOT/webroot/bridge-arm" "$MODROOT/webroot/bridge" 2>/dev/null
+fi
+
+if [ -f "$MODROOT/webroot/bridge" ]; then
+    chmod 755 "$MODROOT/webroot/bridge"
+fi
+
+# 确保webroot目录权限正确
+chmod 755 "$MODROOT/webroot"
+chmod 755 "$MODROOT/webroot/css"
+chmod 755 "$MODROOT/webroot/js"
 
 # 安装二进制文件
 if echo "$ARCH" | grep -q "arm64"; then
@@ -180,15 +204,109 @@ case $DATA_DIR_OPTION in
     2) DATA_DIR="/sdcard/Android/openlist" ;;
 esac
 
-# 数据迁移提示
+# 数据迁移逻辑
 ui_print " "
 ui_print "📢 数据目录设置"
 ui_print "━━━━━━━━━━━━━━━━━━━━━━"
 ui_print "✓ 已选择: $DATA_DIR"
+
+# 定义两个可能的数据目录
+DIR_A="/data/adb/openlist"
+DIR_B="/sdcard/Android/openlist"
+
+# 确定源目录和目标目录
+if [ "$DATA_DIR" = "$DIR_A" ]; then
+    TARGET_DIR="$DIR_A"
+    SOURCE_DIR="$DIR_B"
+elif [ "$DATA_DIR" = "$DIR_B" ]; then
+    TARGET_DIR="$DIR_B"
+    SOURCE_DIR="$DIR_A"
+fi
+
+# 检查是否需要迁移（逐个检查文件）
+NEED_MIGRATE=0
+if [ -f "$SOURCE_DIR/data.db" ] || [ -f "$SOURCE_DIR/data.db-shm" ] || \
+   [ -f "$SOURCE_DIR/data.db-wal" ] || [ -f "$SOURCE_DIR/初始密码.txt" ]; then
+    NEED_MIGRATE=1
+fi
+
+# 检查目标目录是否已有数据
+TARGET_HAS_DATA=0
+if [ -f "$TARGET_DIR/data.db" ] || [ -f "$TARGET_DIR/data.db-shm" ] || \
+   [ -f "$TARGET_DIR/data.db-wal" ] || [ -f "$TARGET_DIR/初始密码.txt" ]; then
+    TARGET_HAS_DATA=1
+fi
+
+# 执行迁移
+if [ $NEED_MIGRATE -eq 1 ] && [ $TARGET_HAS_DATA -eq 0 ]; then
+    ui_print "⚠️ 检测到源目录存在数据，正在迁移..."
+    
+    # 确保目标目录存在
+    mkdir -p "$TARGET_DIR"
+    
+    # 迁移文件
+    MIGRATE_SUCCESS=0
+    
+    # 迁移 data.db
+    if [ -f "$SOURCE_DIR/data.db" ]; then
+        if cp "$SOURCE_DIR/data.db" "$TARGET_DIR/"; then
+            ui_print "✅ 迁移: data.db"
+            MIGRATE_SUCCESS=1
+        else
+            ui_print "❌ 迁移失败: data.db"
+        fi
+    fi
+    
+    # 迁移 data.db-shm
+    if [ -f "$SOURCE_DIR/data.db-shm" ]; then
+        if cp "$SOURCE_DIR/data.db-shm" "$TARGET_DIR/"; then
+            ui_print "✅ 迁移: data.db-shm"
+            MIGRATE_SUCCESS=1
+        else
+            ui_print "❌ 迁移失败: data.db-shm"
+        fi
+    fi
+    
+    # 迁移 data.db-wal
+    if [ -f "$SOURCE_DIR/data.db-wal" ]; then
+        if cp "$SOURCE_DIR/data.db-wal" "$TARGET_DIR/"; then
+            ui_print "✅ 迁移: data.db-wal"
+            MIGRATE_SUCCESS=1
+        else
+            ui_print "❌ 迁移失败: data.db-wal"
+        fi
+    fi
+    
+    # 迁移 初始密码.txt
+    if [ -f "$SOURCE_DIR/初始密码.txt" ]; then
+        if cp "$SOURCE_DIR/初始密码.txt" "$TARGET_DIR/"; then
+            ui_print "✅ 迁移: 初始密码.txt"
+            MIGRATE_SUCCESS=1
+        else
+            ui_print "❌ 迁移失败: 初始密码.txt"
+        fi
+    fi
+    
+    # 如果迁移成功，删除源目录
+    if [ $MIGRATE_SUCCESS -eq 1 ]; then
+        ui_print "🔄 迁移完成，清理源目录..."
+        rm -rf "$SOURCE_DIR" 2>/dev/null
+        ui_print "✅ 已删除源目录: $SOURCE_DIR"
+        ui_print "✅ 数据迁移完成"
+    else
+        ui_print "❌ 数据迁移失败"
+    fi
+elif [ $TARGET_HAS_DATA -eq 1 ]; then
+    ui_print "✓ 目标目录已有数据，跳过迁移"
+elif [ $NEED_MIGRATE -eq 0 ]; then
+    ui_print "✓ 未检测到需要迁移的数据"
+fi
+
+ui_print "━━━━━━━━━━━━━━━━━━━━━━"
 ui_print "⚠️ 注意事项："
 ui_print "1. 新数据目录将在重启后生效"
-ui_print "2. 请手动将现有数据迁移到新目录"
-ui_print "3. 迁移后更新 config.json 中的路径"
+ui_print "2. 数据迁移已自动完成（如果需要）"
+ui_print "3. 请确保目标目录有正确的权限"
 ui_print "━━━━━━━━━━━━━━━━━━━━━━"
 
 # 更新 service.sh - 使用占位符替换
@@ -198,10 +316,20 @@ if [ -f "$MODROOT/service.sh" ] && [ -f "$MODROOT/action.sh" ]; then
     sed -i 's|__PLACEHOLDER_BINARY_PATH__|'"$BINARY_SERVICE_PATH"'|g' "$MODROOT/action.sh"
     sed -i 's|__PLACEHOLDER_DATA_DIR__|'"$DATA_DIR"'|g' "$MODROOT/service.sh"
 
+    # 更新 web UI 中的占位符
+    if [ -f "$MODROOT/webroot/index.html" ]; then
+        # 对于 web UI，使用实际路径（不是带 $MODDIR 的路径）
+        WEB_BINARY_PATH=$(echo "$BINARY_SERVICE_PATH" | sed 's|\$MODDIR|'"$MODROOT"'|g')
+        sed -i 's|__PLACEHOLDER_BINARY_PATH__|'"$WEB_BINARY_PATH"'|g' "$MODROOT/webroot/index.html"
+        sed -i 's|__PLACEHOLDER_DATA_DIR__|'"$DATA_DIR"'|g' "$MODROOT/webroot/index.html"
+    fi
+
     # 验证更新是否成功 - 检查占位符是否被正确替换
     if ! grep -q "__PLACEHOLDER_BINARY_PATH__" "$MODROOT/service.sh" && \
        ! grep -q "__PLACEHOLDER_BINARY_PATH__" "$MODROOT/action.sh" && \
-       ! grep -q "__PLACEHOLDER_DATA_DIR__" "$MODROOT/service.sh"; then
+       ! grep -q "__PLACEHOLDER_DATA_DIR__" "$MODROOT/service.sh" && \
+       ( ! [ -f "$MODROOT/webroot/index.html" ] || ! grep -q "__PLACEHOLDER_BINARY_PATH__" "$MODROOT/webroot/index.html" ) && \
+       ( ! [ -f "$MODROOT/webroot/index.html" ] || ! grep -q "__PLACEHOLDER_DATA_DIR__" "$MODROOT/webroot/index.html" ); then
         ui_print "✅ 配置更新成功"
     else
         ui_print "❌ 配置更新失败"

@@ -1,12 +1,10 @@
-name: 构建 OpenList Magisk 模块
+name: 构建 OpenList Magisk 模块 (Test 分支)
 
 on:
-  schedule:
-    - cron: '0 */4 * * *'  # 每4小时运行一次
   workflow_dispatch:  # 支持手动触发
   push:
     branches:
-      - main  # 推送 main 分支时触发
+      - test  # 推送 test 分支时触发
     paths-ignore:
       - 'update.json'
       - 'OpenList-Magisk/module.prop'  # 忽略由工作流自动更新的文件
@@ -23,6 +21,9 @@ jobs:
       # 检出仓库代码
       - name: 检出仓库代码
         uses: actions/checkout@v4
+        with:
+          ref: test
+          fetch-depth: 0
 
       # 安装依赖工具
       - name: 安装依赖
@@ -90,52 +91,11 @@ jobs:
             echo "EOF"
           } >> $GITHUB_ENV
 
-      # 检查当前模块版本
-      - name: 检查当前模块版本
-        id: check_version
+      # 直接设置构建标志，每次都构建
+      - name: 设置构建标志
         run: |
-          if [ -f update.json ]; then
-            CURRENT_VERSION=$(grep '"version":' update.json | sed -E 's/.*"version":\s*"([^"]+)".*/\1/')
-            echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_ENV
-          else
-            echo "CURRENT_VERSION=none" >> $GITHUB_ENV
-          fi
-
-      # 比较版本并决定是否构建
-      - name: 检查是否需要构建
-        id: should_build
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # 检查版本是否一致
-          VERSION_MATCH=false
-          if [ "${{ env.CURRENT_VERSION }}" != "none" ] && [ "${{ env.OPENLIST_VERSION }}" = "${{ env.CURRENT_VERSION }}" ]; then
-            VERSION_MATCH=true
-          fi
-          
-          # 检查 Release 是否存在
-          RELEASE_EXISTS=false
-          if [ "$VERSION_MATCH" = "true" ]; then
-            if gh release view "${{ env.OPENLIST_VERSION }}" &>/dev/null; then
-              RELEASE_EXISTS=true
-            fi
-          fi
-          
-          # 决定是否构建
-          if [ "${{ env.CURRENT_VERSION }}" = "none" ] || [ "${{ env.OPENLIST_VERSION }}" != "${{ env.CURRENT_VERSION }}" ] || [ "$RELEASE_EXISTS" = "false" ]; then
-            echo "需要构建新模块："
-            if [ "${{ env.CURRENT_VERSION }}" = "none" ]; then
-              echo "- 当前版本不存在，首次构建"
-            elif [ "${{ env.OPENLIST_VERSION }}" != "${{ env.CURRENT_VERSION }}" ]; then
-              echo "- 版本不匹配：OpenList 版本 ${{ env.OPENLIST_VERSION }}，当前模块版本 ${{ env.CURRENT_VERSION }}"
-            elif [ "$RELEASE_EXISTS" = "false" ]; then
-              echo "- 版本匹配但 Release 不存在"
-            fi
-            echo "SHOULD_BUILD=true" >> $GITHUB_ENV
-          else
-            echo "模块版本已是最新 (${{ env.OPENLIST_VERSION }}) 且 Release 存在，无需构建"
-            echo "SHOULD_BUILD=false" >> $GITHUB_ENV
-          fi
+          echo "SHOULD_BUILD=true" >> $GITHUB_ENV
+          echo "每次触发都执行构建，不进行版本比对"
 
       # 同步 OpenList 二进制文件
       - name: 同步 OpenList 二进制文件
@@ -206,14 +166,14 @@ jobs:
           {
               "version": "${{ env.OPENLIST_VERSION }}",
               "versionCode": ${{ env.OPENLIST_VERSION_CODE }},
-              "zipUrl": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ env.OPENLIST_VERSION }}/openlist-magisk-${{ env.OPENLIST_VERSION }}.zip",
-              "changelog": "${{ github.server_url }}/${{ github.repository }}/raw/main/OpenList-Magisk/CHANGELOG.md"
+              "zipUrl": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ env.OPENLIST_VERSION }}-test/openlist-magisk-${{ env.OPENLIST_VERSION }}-test.zip",
+              "changelog": "${{ github.server_url }}/${{ github.repository }}/raw/test/OpenList-Magisk/CHANGELOG.md"
           }
           EOF
 
           # 更新 module.prop
           if [ -f OpenList-Magisk/module.prop ]; then
-            sed -i "s/^version=.*/version=${{ env.OPENLIST_VERSION }}/" OpenList-Magisk/module.prop
+            sed -i "s/^version=.*/version=${{ env.OPENLIST_VERSION }} (Test)/" OpenList-Magisk/module.prop
             sed -i "s/^versionCode=.*/versionCode=${{ env.OPENLIST_VERSION_CODE }}/" OpenList-Magisk/module.prop
           else
             echo "::error::module.prop 文件不存在"
@@ -224,19 +184,26 @@ jobs:
           mkdir -p OpenList-Magisk
           echo "${{ env.OPENLIST_CHANGELOG }}" > OpenList-Magisk/CHANGELOG.md
 
+          # 确保在 test 分支上
+          git checkout -b test || git checkout test
+          
+          # 强制重置本地分支到远程分支，避免冲突
+          git fetch origin test
+          git reset --hard origin/test
+          
           # 提交更改
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add update.json OpenList-Magisk/module.prop OpenList-Magisk/CHANGELOG.md
-          git commit -m "更新模块到 OpenList ${{ env.OPENLIST_VERSION }}" || echo "无更改需要提交"
-          git push origin main
+          git commit -m "更新模块到 OpenList ${{ env.OPENLIST_VERSION }} (Test)" || echo "无更改需要提交"
+          git push origin test
 
       # 打包模块
       - name: 打包模块
         if: env.SHOULD_BUILD == 'true'
         run: |
           cd OpenList-Magisk
-          zip -r ../openlist-magisk-${{ env.OPENLIST_VERSION }}.zip .
+          zip -r ../openlist-magisk-${{ env.OPENLIST_VERSION }}-test.zip .
           cd ..
 
       # 创建 Release
@@ -246,25 +213,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 检查 Release 是否已存在
-          if gh release view "${{ env.OPENLIST_VERSION }}" &>/dev/null; then
-            echo "Release ${{ env.OPENLIST_VERSION }} 已存在，跳过创建"
+          if gh release view "${{ env.OPENLIST_VERSION }}-test" &>/dev/null; then
+            echo "Release ${{ env.OPENLIST_VERSION }}-test 已存在，跳过创建"
             exit 0
           fi
           
           # 创建 Release notes 文件
-          echo "Synced with OpenList official release v${{ env.OPENLIST_VERSION }}" > release_notes.txt
+          echo "Synced with OpenList official release v${{ env.OPENLIST_VERSION }} (Test Branch)" > release_notes.txt
           echo "" >> release_notes.txt
           echo "${{ env.OPENLIST_CHANGELOG }}" >> release_notes.txt
           
           # 创建 Release
-          gh release create "${{ env.OPENLIST_VERSION }}" \
-            --title "OpenList Magisk Module ${{ env.OPENLIST_VERSION }}" \
+          gh release create "${{ env.OPENLIST_VERSION }}-test" \
+            --title "OpenList Magisk Module ${{ env.OPENLIST_VERSION }} (Test)" \
             --notes-file release_notes.txt \
             --draft=false \
-            --prerelease=false \
-            "openlist-magisk-${{ env.OPENLIST_VERSION }}.zip"
+            --prerelease=true \
+            "openlist-magisk-${{ env.OPENLIST_VERSION }}-test.zip"
           
-          echo "Release ${{ env.OPENLIST_VERSION }} 创建成功"
+          echo "Release ${{ env.OPENLIST_VERSION }}-test 创建成功"
           
           # 清理临时文件
           rm -f release_notes.txt
