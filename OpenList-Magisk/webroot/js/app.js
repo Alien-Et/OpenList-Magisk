@@ -269,15 +269,21 @@ const App = {
     
     // 检查服务是否运行
     async checkServiceStatus() {
-        // 使用 pgrep 或 ps 检查 openlist 进程
-        const result = await this.exec('pgrep -f openlist || ps -ef | grep openlist | grep -v grep');
+        // 使用 pgrep 或 ps 检查 openlist 服务器进程（精确匹配，与 service.sh 一致）
+        const result = await this.exec('pgrep -f "openlist server --data" || ps -ef | grep "openlist server --data" | grep -v grep');
         if (result.code === 0 && result.data) {
-            // 尝试提取 PID
+            // 提取所有 PID
             const lines = result.data.trim().split('\n');
-            const pid = lines[0].split(/\s+/)[0];
-            return { running: true, pid: pid };
+            const pids = [];
+            for (const line of lines) {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length > 0) {
+                    pids.push(parts[0]);
+                }
+            }
+            return { running: true, pid: pids[0], pids: pids };
         }
-        return { running: false, pid: null };
+        return { running: false, pid: null, pids: [] };
     },
     
     // 启动 OpenList 服务
@@ -286,15 +292,17 @@ const App = {
             return { error: 'Binary path not set' };
         }
         
-        // 检查是否已经在运行
+        // 检查是否已经在运行（防止重复启动）
         const status = await this.checkServiceStatus();
         if (status.running) {
-            return { success: true, output: 'Service already running', pid: status.pid };
+            this.log('Service already running, preventing duplicate start. PIDs:', status.pids);
+            return { success: true, output: 'Service already running', pid: status.pid, pids: status.pids };
         }
         
         // 启动服务：二进制路径 server --data 数据目录 & （后台运行）
         const dataDir = this.state.dataDir || '/data/adb/openlist';
         const cmd = `"${this.state.binaryPath}" server --data "${dataDir}" &`;
+        this.log('Starting service with command:', cmd);
         const result = await this.exec(cmd);
         
         // 等待一下让服务启动
@@ -303,14 +311,24 @@ const App = {
         // 检查是否启动成功
         const newStatus = await this.checkServiceStatus();
         if (newStatus.running) {
-            return { success: true, output: 'Service started', pid: newStatus.pid };
+            // 更新 module.prop 文件为运行状态
+            this.log('Service started successfully. PIDs:', newStatus.pids);
+            try {
+                await this.updateModuleProp('running', newStatus.pid);
+                this.log('Module.prop updated successfully');
+            } catch (e) {
+                this.error('Failed to update module.prop:', e);
+            }
+            return { success: true, output: 'Service started', pid: newStatus.pid, pids: newStatus.pids };
         }
         
         // 如果进程检测失败，但命令执行成功，也认为启动成功
         if (result.code === 0) {
+            this.log('Service started but PID not found');
             return { success: true, output: 'Service started' };
         }
         
+        this.error('Failed to start service:', result.data);
         return { error: result.data || 'Failed to start service' };
     },
     
@@ -318,23 +336,34 @@ const App = {
     async stopOpenListService() {
         const status = await this.checkServiceStatus();
         if (!status.running) {
+            this.log('Service not running');
             return { success: true, output: 'Service not running' };
         }
         
         try {
-            // 使用 pkill 杀死 openlist 进程
-            const result = await this.exec('pkill -f openlist');
+            // 杀死所有 openlist 服务器进程（精确匹配，与 service.sh 一致）
+            this.log('Stopping all openlist server processes. PIDs:', status.pids);
+            const result = await this.exec('pkill -f "openlist server --data"');
             
             // 等待一下让进程完全停止
-            await new Promise(resolve => setTimeout(resolve, 800));
+            await new Promise(resolve => setTimeout(resolve, 1000));
             
-            // 检查是否停止成功
+            // 再次检查是否还有进程在运行
             const newStatus = await this.checkServiceStatus();
             if (!newStatus.running) {
+                this.log('All openlist server processes stopped');
+                // 更新 module.prop 文件为已停止状态
+                try {
+                    await this.updateModuleProp('stopped');
+                    this.log('Module.prop updated to stopped status');
+                } catch (e) {
+                    this.error('Failed to update module.prop:', e);
+                }
                 return { success: true, output: 'Service stopped' };
+            } else {
+                this.error('Some openlist server processes still running. PIDs:', newStatus.pids);
+                return { error: 'Failed to stop all processes' };
             }
-            
-            return { error: 'Failed to stop service' };
         } catch (e) {
             this.error('Stop service error:', e);
             return { error: e.message || 'Failed to stop service' };
@@ -344,6 +373,8 @@ const App = {
     // 重启 OpenList 服务（先 pkill，再启动）
     async restartOpenListService() {
         try {
+            this.log('Restarting service...');
+            
             // 先停止服务
             const stopResult = await this.stopOpenListService();
             this.log('Stop result:', stopResult);
@@ -427,10 +458,155 @@ const App = {
         this.error('No log file found for monitoring');
     },
     
-    // 停止日志监控
-    stopLogMonitoring() {
-        this.state.logMonitoring = false;
-        this.log('Log monitoring stopped');
+    // 更新 module.prop 文件中的服务状态
+    async updateModuleProp(status, pid = null) {
+        try {
+            this.log('Updating module.prop:', status, pid);
+            
+            // 尝试多个可能的模块属性文件路径
+            const modulePropPaths = [
+                '/data/adb/modules/openlist/module.prop',
+                '/data/adb/openlist/module.prop'
+            ];
+            const repoUrl = 'https://github.com/Alien-Et/OpenList-Magisk';
+            
+            // 找到存在且可写的 module.prop 文件
+            let modulePropPath = null;
+            for (const path of modulePropPaths) {
+                const checkResult = await this.exec(`[ -f "${path}" ] && echo "exists"`);
+                if (checkResult.code === 0 && checkResult.data?.includes('exists')) {
+                    modulePropPath = path;
+                    this.log('Found module.prop at:', path);
+                    break;
+                }
+            }
+            
+            if (!modulePropPath) {
+                this.error('No module.prop file found');
+                return { error: 'No module.prop file found' };
+            }
+            
+            // 构建新的 description 行
+            let newDescription;
+            if (status === 'stopped') {
+                newDescription = `description=【已停止】请点击"操作"启动程序。项目地址：${repoUrl}`;
+            } else if (status === 'running' && pid) {
+                try {
+                    // 异步获取 IP 和端口
+                    const [currentIp, port] = await Promise.all([
+                        this.getCurrentIP(),
+                        this.getCurrentPort(pid)
+                    ]);
+                    
+                    // 获取数据目录
+                    const dataDir = this.state.dataDir || '/data/adb/openlist';
+                    
+                    // 获取初始密码（如果存在）
+                    let passwordText = '';
+                    const passwordResult = await this.exec(`[ -f "${dataDir}/初始密码.txt" ] && cat "${dataDir}/初始密码.txt"`);
+                    if (passwordResult.code === 0 && passwordResult.data) {
+                        passwordText = ` | 初始密码：${passwordResult.data.trim()}`;
+                    }
+                    
+                    // 构建描述文本
+                    if (port && currentIp !== '无法获取IP') {
+                        newDescription = `description=【运行中】当前地址：http://${currentIp}:${port} | PID:${pid} | 数据目录：${dataDir} | 点击▲操作关闭程序${passwordText}`;
+                    } else {
+                        newDescription = `description=【运行中】无法检测 openlist 地址（IP: ${currentIp}, 端口: ${port || '未知'}，PID:${pid}），请检查日志 | 数据目录：${dataDir} | 点击▲操作关闭程序${passwordText}`;
+                    }
+                } catch (e) {
+                    this.error('Error in running status update:', e);
+                    // 即使获取 IP 或端口失败，也更新为运行状态
+                    const dataDir = this.state.dataDir || '/data/adb/openlist';
+                    newDescription = `description=【运行中】OpenList 服务已启动 | PID:${pid} | 数据目录：${dataDir} | 点击▲操作关闭程序`;
+                }
+            } else {
+                return { error: 'Invalid status' };
+            }
+            
+            // 使用与 service.sh 相同的方式更新文件（不使用 sed -i）
+            // 1. 读取文件内容，移除旧的 description 行
+            const readResult = await this.exec(`cat "${modulePropPath}"`);
+            if (readResult.code !== 0) {
+                this.error('Failed to read module.prop:', readResult);
+                return { error: 'Failed to read module.prop' };
+            }
+            
+            // 2. 移除旧的 description 行，添加新的 description 行
+            const lines = readResult.data.split('\n');
+            const newLines = lines.filter(line => !line.startsWith('description='));
+            newLines.push(newDescription);
+            
+            // 3. 写入临时文件
+            const tempPath = `${modulePropPath}.tmp`;
+            const content = newLines.join('\n');
+            const writeResult = await this.exec(`echo "${content}" > "${tempPath}"`);
+            if (writeResult.code !== 0) {
+                this.error('Failed to write temp file:', writeResult);
+                return { error: 'Failed to write temp file' };
+            }
+            
+            // 4. 移动临时文件到原文件
+            const moveResult = await this.exec(`mv "${tempPath}" "${modulePropPath}"`);
+            if (moveResult.code !== 0) {
+                this.error('Failed to move temp file:', moveResult);
+                return { error: 'Failed to move temp file' };
+            }
+            
+            this.log('Module.prop updated successfully');
+            return { success: true };
+        } catch (e) {
+            this.error('Update module.prop error:', e);
+            return { error: e.message };
+        }
+    },
+    
+    // 获取当前 IP 地址
+    async getCurrentIP() {
+        try {
+            // 接口定义
+            const WIFI_IF = 'wlan0';
+            
+            // 检查 WiFi 接口是否处于 UP 状态
+            const wifiUpResult = await this.exec(`ip link show ${WIFI_IF} 2>/dev/null | grep -q "UP,LOWER_UP" && echo "up"`);
+            const wifiUp = wifiUpResult.code === 0 && wifiUpResult.data?.includes('up');
+            
+            if (wifiUp) {
+                // 获取 WiFi IP
+                const ipResult = await this.exec(`ip addr show ${WIFI_IF} 2>/dev/null | grep -E 'inet [0-9]+\.' | awk '{print $2}' | cut -d/ -f1 | head -n1`);
+                if (ipResult.code === 0 && ipResult.data?.trim()) {
+                    return ipResult.data.trim();
+                }
+            }
+            
+            // 移动数据或无法获取 IP
+            return 'localhost';
+        } catch (e) {
+            this.error('Get current IP error:', e);
+            return '无法获取IP';
+        }
+    },
+    
+    // 获取当前端口
+    async getCurrentPort(pid) {
+        try {
+            // 使用 ss 或 netstat 获取端口
+            const result = await this.exec(`ss -tulnp 2>/dev/null | grep ${pid} | awk '{print $5}' | cut -d':' -f2 | sort -u | head -n 1`);
+            if (result.code === 0 && result.data?.trim()) {
+                return result.data.trim();
+            }
+            
+            // 尝试使用 netstat
+            const netstatResult = await this.exec(`netstat -tulnp 2>/dev/null | grep ${pid} | awk '{print $4}' | cut -d':' -f2 | sort -u | head -n 1`);
+            if (netstatResult.code === 0 && netstatResult.data?.trim()) {
+                return netstatResult.data.trim();
+            }
+            
+            return null;
+        } catch (e) {
+            this.error('Get current port error:', e);
+            return null;
+        }
     },
     
     // 刷新所有数据
@@ -768,7 +944,11 @@ function startService() {
             App.log('Start result:', result);
             
             if (result?.success) {
-                App.showToast('服务启动成功', 'success');
+                if (result?.output === 'Service already running') {
+                    App.showToast('有后台 不需要重复启动', 'info');
+                } else {
+                    App.showToast('服务启动成功', 'success');
+                }
             } else {
                 const error = result?.error || result?.output || '未知错误';
                 App.showToast('服务启动失败: ' + error, 'error');
@@ -793,7 +973,11 @@ function stopService() {
             App.log('Stop result:', result);
             
             if (result?.success) {
-                App.showToast('服务已停止', 'success');
+                if (result?.output === 'Service not running') {
+                    App.showToast('进程不存在无需关闭', 'info');
+                } else {
+                    App.showToast('服务已停止', 'success');
+                }
             } else {
                 const error = result?.error || result?.output || '未知错误';
                 App.showToast('服务停止失败: ' + error, 'error');
@@ -818,7 +1002,11 @@ function restartService() {
             App.log('Restart result:', result);
             
             if (result?.success) {
-                App.showToast('服务重启成功', 'success');
+                if (result?.output === 'Service already running') {
+                    App.showToast('有后台 不需要重复启动', 'info');
+                } else {
+                    App.showToast('服务重启成功', 'success');
+                }
             } else {
                 const error = result?.error || result?.output || '未知错误';
                 App.showToast('服务重启失败: ' + error, 'error');
@@ -851,6 +1039,15 @@ async function changePassword() {
     App.log('Password change result:', result);
     
     if (result?.success) {
+        // 写入密码到初始密码.txt
+        const dataDir = App.state.dataDir || '/data/adb/openlist';
+        const writeResult = await App.exec(`echo "${password}" > "${dataDir}/初始密码.txt"`);
+        if (writeResult.code === 0) {
+            App.log('Password saved to initial password file');
+        } else {
+            App.error('Failed to save password to initial password file:', writeResult);
+        }
+        
         App.showToast('密码修改成功', 'success');
         input.value = '';
     } else {
@@ -868,6 +1065,15 @@ async function resetPassword() {
     App.log('Password reset result:', result);
     
     if (result?.success) {
+        // 写入密码到初始密码.txt
+        const dataDir = App.state.dataDir || '/data/adb/openlist';
+        const writeResult = await App.exec(`echo "admin" > "${dataDir}/初始密码.txt"`);
+        if (writeResult.code === 0) {
+            App.log('Password saved to initial password file');
+        } else {
+            App.error('Failed to save password to initial password file:', writeResult);
+        }
+        
         App.showToast('密码已重置为: admin', 'success');
         const input = document.getElementById('newPassword');
         if (input) input.value = '';
