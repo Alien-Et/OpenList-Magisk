@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/github/license/Alien-Et/OpenList-Magisk)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/LICENSE)
 
 ## 测试版说明
-注意：当前为测试版，主要增加 WEBUI 功能，解决了 main 分支 actions 点击异常的 bug。**
+注意：当前v4.10.1v4.10.1为测试版，主要增加 WEBUI 功能，解决了 main 分支 actions 点击异常的 bug。**
 > **
 
 ### 兼容性说明
@@ -230,6 +230,11 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - 可在安装时重新选择配置选项
 
 ## 更新日志
+
+### v4.1.10.1 (2026-02-24)
+- **修复** GitHub Actions 工作流配置，支持 4 位版本号格式
+- **优化** 版本代码计算逻辑，确保 4 位版本号正确处理
+- **改进** 工作流执行流程，提高构建稳定性
 
 ### v4.1.10 (2026-02-23)
 - **修复** 服务重启时页面卡住的问题
