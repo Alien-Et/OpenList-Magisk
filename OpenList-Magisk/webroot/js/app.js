@@ -402,7 +402,7 @@ const App = {
         ];
         
         for (const logPath of logPaths) {
-            const result = await this.exec(`cat "${logPath}" 2>/dev/null`);
+            const result = await this.exec(`tail -n 1000 "${logPath}" 2>/dev/null`);
             if (result.code === 0 && result.data && result.data.trim()) {
                 return { success: true, output: result.data, path: logPath };
             }
