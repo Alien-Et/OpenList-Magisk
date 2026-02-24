@@ -261,8 +261,10 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 ## 更新日志
 
 ### v4.1.10.2 (2026-02-24)
-- **修复** module.prop 文件状态更新问题，使用 cat、echo、mv 命令替代 sed -i
-- **修复** 密码修改和重置功能，成功后自动写入初始密码文件
+- **修复** 启动服务改用 exec 模式，避免 spawn 启动失败
+- **修复** 删除 --log-level=info 参数，解决二进制启动失败问题
+- **新增** GitHub Actions 工作流构建时自动同步标签版本到 module.prop 和 update.json
+- **修复** Web UI 前端无法更新状态到 root 管理器面板的问题
 - **优化** 进程检测逻辑，使用精确匹配方式与 service.sh 保持一致
 - **改进** Web UI 服务控制功能，确保启动/停止/重启时正确更新状态
 
