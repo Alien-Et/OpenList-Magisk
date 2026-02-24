@@ -395,10 +395,10 @@ const App = {
     
     // 读取日志文件
     async readLogFile() {
-        // 模块目录的日志路径
+        // 数据目录的日志路径
         const logPaths = [
-            '/data/adb/modules/openlist/service.log',
-            '/data/adb/openlist/service.log'
+            '/data/adb/openlist/log/log.log',
+            '/sdcard/Android/openlist/log/log.log'
         ];
         
         for (const logPath of logPaths) {
@@ -419,8 +419,8 @@ const App = {
         }
         
         const logPaths = [
-            '/data/adb/modules/openlist/service.log',
-            '/data/adb/openlist/service.log'
+            '/data/adb/openlist/log/log.log',
+            '/sdcard/Android/openlist/log/log.log'
         ];
         
         for (const logPath of logPaths) {
