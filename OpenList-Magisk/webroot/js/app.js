@@ -299,44 +299,14 @@ const App = {
             return { success: true, output: 'Service already running', pid: status.pid, pids: status.pids };
         }
         
-        // 启动服务：二进制路径 server --data 数据目录 （使用spawn捕获输出）
+        // 启动服务：二进制路径 server --data 数据目录 （使用正常模式启动）
         const dataDir = this.state.dataDir || '/data/adb/openlist';
-        const cmd = `"${this.state.binaryPath}" server --data "${dataDir}"`;
+        const cmd = `"${this.state.binaryPath}" server --data "${dataDir}" &`;
         this.log('Starting service with command:', cmd);
         
-        // 使用 spawn 启动服务并捕获输出
-        const child = this.spawn('sh', ['-c', cmd]);
-        
-        // 保存子进程引用
-        this.state.serviceChild = child;
-        
-        // 捕获输出并显示在日志区域
-        child.stdout.on('data', (data) => {
-            this.log('Service output:', data.toString());
-            const logEl = document.getElementById('logContent');
-            if (logEl) {
-                logEl.textContent += data.toString();
-                logEl.scrollTop = logEl.scrollHeight;
-            }
-        });
-        
-        child.stderr.on('data', (data) => {
-            this.log('Service error:', data.toString());
-            const logEl = document.getElementById('logContent');
-            if (logEl) {
-                logEl.textContent += data.toString();
-                logEl.scrollTop = logEl.scrollHeight;
-            }
-        });
-        
-        child.on('error', (error) => {
-            this.error('Service error:', error);
-        });
-        
-        child.on('close', (code) => {
-            this.log('Service exited with code:', code);
-            this.state.serviceChild = null;
-        });
+        // 使用 exec 启动服务
+        const result = await this.exec(cmd);
+        this.log('Service start result:', result);
         
         // 等待一下让服务启动
         await new Promise(resolve => setTimeout(resolve, 1500));
