@@ -1,46 +1,5 @@
-This release adds two major features, the **Media Library** and **Advanced Transfer Seeds**, and the UI now supports **22 languages**. It also contains several important security updates. All users should read these notes carefully and upgrade as soon as possible.
+### &nbsp;&nbsp;&nbsp;🐞 Bug Fixes
 
-### 🚀 New Features
+- **mysql**: Add size constraint to WebDAVProperty string fields for MySQL compatibility &nbsp;-&nbsp; by @PIKACHUIM in https://github.com/OpenListTeam/OpenList/issues/3259 [<samp>(0497e)</samp>](https://github.com/OpenListTeam/OpenList/commit/0497ee85)
 
-1. 🎬 **Media Library**: OpenList can now also be used as your personal media library (#2210 #396)
-   - Supports four media types: movies/TV, music, images and books. Scan paths and path-merge modes can be set separately for each type
-   - Pulls metadata from several sources: TMDB and Douban for movies/TV, Discogs plus ID3 tags for music, and local metadata for books and images
-   - Four dedicated browsing pages: a video wall, a music library (albums, tracks and a global floating player), an image gallery and a bookshelf
-   - In the admin panel you can view scan progress, edit entries, start scraping manually and clear the media database
-   - New global sidebar: collapsible, with a transparent mode, light/dark theme switching and a hamburger menu on mobile. Switch between files and each media library with a single click
-   - Supports Emby- and OpenSubsonic-compatible APIs, so any client that speaks these APIs can connect to the OpenList media server
-2. 🌱 **Advanced Transfer Seeds**: move files between cloud drives without transferring any file data (#3058 #670)
-   - A seed file of a few hundred bytes stands in for the actual file and records only its hashes and source
-   - The receiving side uses the seed to instant-upload the file to the target drive by hash, or to save it from a share link. Moving files between drives no longer means downloading them first and then uploading them again
-   - Converts seeds between three formats (OSS, torrent and CAS), detects which hashes each drive supports, and falls back through four stages
-   - Hash-based instant upload is implemented for 12 cloud drive drivers. Seeds can be generated, previewed and managed in the web UI
-3. 🌍 **Languages**: the UI is now available in 22 languages (#695 #714)
-   - Simplified Chinese, Traditional Chinese, English, Japanese, Korean, French, German, Spanish, Portuguese, Russian, Italian, Dutch
-   - Danish, Norwegian, Swedish, Turkish, Arabic, Hindi, Bengali, Urdu, Indonesian, Thai, Vietnamese
-
-### 🛡️ Security Updates
-
-1. 📡 **WebDAV (⚠️ breaking change)**: corrects COPY/MOVE semantics, persists dead properties and strictly enforces locks (#3210)
-2. 🪣 **S3**: direct-transfer redirects are now verified with the current instance's access keys to prevent forged redirects (#3158)
-3. 🧰 **Build**: Go toolchain upgraded to 1.27.3, fixing a recent CA certificate security issue (#3240)
-4. 💻 **Frontend dependencies**: handlebars 4.7.10 and katex 0.18.2, both security fixes (#698 #699)
-5. 📄 **Security docs**: the security boundary in SECURITY has been updated (#3211)
-6. 🔐 **Login**: the form now submits automatically once all 6 digits of the 2FA code are entered (#696)
-
-### 🐞 Backend Fixes
-
-1. 🥔 **China Unicom Cloud (Wopan)**: uses a browser user agent and refreshes tokens before initialization (#3222)
-2. 🐻 **Baidu Netdisk**: adds error codes that trigger a token refresh (#3232)
-3. 📡 **WebDAV driver**: if a directory stat fails, it retries with a trailing slash (#3223)
-4. 🔗 **Sharing**: fixes the missing base path for thumbnails in shared links (#3194)
-5. 🖼️ **Static assets**: the manifest icon type and sizes are now resolved dynamically (#3197)
-
-### 📦 Dependency Upgrades
-
-Frontend upgraded to vite 8.3.3, Node 24.22.1, pnpm 11.28.7, prettier 3.9.10, libheif-js 1.23.5, Crowdin CLI 5.5.0 and more (#703 #706 #691 #701 #693 #705)
-
----
-
-❤️ Thanks to all contributors and community members for their feedback and support
-⚠️ This release contains security fixes and changes to WebDAV behavior
-🛡️ All users should read these notes before upgrading and upgrade as soon as possible
+##### &nbsp;&nbsp;&nbsp;&nbsp;[View changes on GitHub](https://github.com/OpenListTeam/OpenList/compare/v4.2.8...v4.2.9)
