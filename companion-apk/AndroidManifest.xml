@@ -16,6 +16,7 @@
             android:name=".ProcessTextActivity"
             android:label="115 离线"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:enabled="false"
             android:exported="true"
             android:excludeFromRecents="true"
             android:noHistory="true">

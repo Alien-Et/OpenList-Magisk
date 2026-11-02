@@ -5,11 +5,13 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -39,6 +41,7 @@ public class OfflineHelperCoreTest {
         runTest("testTokenSanitization", OfflineHelperCoreTest::testTokenSanitization);
         runTest("testApiResultIsStorageError", OfflineHelperCoreTest::testApiResultIsStorageError);
         runTest("testAutoHealStorageNotInit", OfflineHelperCoreTest::testAutoHealStorageNotInit);
+        runTest("testManifestDefaultDisabledProcessTextActivity", OfflineHelperCoreTest::testManifestDefaultDisabledProcessTextActivity);
 
         System.out.println("=== Test Summary: " + testsPassed + "/" + testsRun + " passed ===");
         if (testsPassed != testsRun) {
@@ -494,5 +497,37 @@ public class OfflineHelperCoreTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    private static void testManifestDefaultDisabledProcessTextActivity() throws IOException {
+        File manifestFile = new File("companion-apk/AndroidManifest.xml");
+        if (!manifestFile.exists()) {
+            manifestFile = new File("AndroidManifest.xml");
+        }
+        assertTrue(manifestFile.exists(), "companion-apk/AndroidManifest.xml must exist");
+
+        String content = new String(Files.readAllBytes(manifestFile.toPath()), StandardCharsets.UTF_8);
+
+        int activityStart = content.indexOf("<activity");
+        assertTrue(activityStart >= 0, "Manifest must declare <activity>");
+        int activityTagEnd = content.indexOf(">", activityStart);
+        assertTrue(activityTagEnd > activityStart, "<activity> opening tag must close with >");
+        int activityClose = content.indexOf("</activity>", activityTagEnd);
+        assertTrue(activityClose > activityTagEnd, "<activity> must have closing </activity>");
+
+        String activityOpeningTag = content.substring(activityStart, activityTagEnd + 1);
+        String activityBody = content.substring(activityStart, activityClose + "</activity>".length());
+
+        assertTrue(activityOpeningTag.contains("android:name=\".ProcessTextActivity\""),
+                "<activity> must declare android:name=\".ProcessTextActivity\"");
+        assertTrue(activityOpeningTag.contains("android:enabled=\"false\""),
+                "ProcessTextActivity must declare android:enabled=\"false\" by default");
+
+        assertTrue(activityBody.contains("android.intent.action.PROCESS_TEXT"),
+                "ProcessTextActivity must retain android.intent.action.PROCESS_TEXT");
+        assertTrue(activityBody.contains("android.intent.action.SEND"),
+                "ProcessTextActivity must retain android.intent.action.SEND");
+        assertTrue(activityBody.contains("android.intent.action.VIEW"),
+                "ProcessTextActivity must retain android.intent.action.VIEW");
     }
 }

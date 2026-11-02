@@ -78,7 +78,9 @@ clean_data() {
 clean_companion() {
     log "正在清理伴侣应用及离线配置..."
     rm -f /data/local/tmp/openlist_offline.conf 2>/dev/null || true
+    rm -f "${SERVICE_D_DIR:-/data/adb/service.d}/openlist_companion_sync.sh" 2>/dev/null || true
     if command -v pm >/dev/null 2>&1; then
+        pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
         pm uninstall io.openlist.helper >/dev/null 2>&1 || true
     fi
 }

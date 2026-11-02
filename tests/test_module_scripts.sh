@@ -260,6 +260,163 @@ CUSTOMIZE_SH="$REPO_ROOT/OpenList-Magisk/customize.sh"
 assert_file_contains "$CUSTOMIZE_SH" "offline\.conf" "customize.sh 包含 offline.conf 初始化逻辑"
 assert_file_contains "$CUSTOMIZE_SH" "OpenListHelper\.apk" "customize.sh 包含 OpenListHelper.apk 权限与安装处理"
 assert_file_contains "$CUSTOMIZE_SH" "chcon -R u:object_r:system_file:s0" "customize.sh 正确设置 SELinux 上下文"
+assert_file_contains "$CUSTOMIZE_SH" "pm disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity" "customize.sh 安装伴侣后若服务未运行则默认隐藏菜单"
+
+# -------------------------------------------------------------
+# 测试 11: set_companion_menu_enabled 启停系统文本菜单入口
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 11: set_companion_menu_enabled 动态控制 ProcessTextActivity 组件状态"
+MOCK_BIN_DIR="$TEST_TMP/mock_bin"
+PM_LOG="$TEST_TMP/pm_calls.log"
+mkdir -p "$MOCK_BIN_DIR"
+cat > "$MOCK_BIN_DIR/pm" << EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$PM_LOG"
+if [ "\$1" = "path" ]; then
+    echo "package:/data/app/io.openlist.helper/base.apk"
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$MOCK_BIN_DIR/pm"
+export PATH="$MOCK_BIN_DIR:$PATH"
+
+: > "$PM_LOG"
+set_companion_menu_enabled 1
+assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper$" "启用菜单时先确保包体处于 enable 状态"
+assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "set_companion_menu_enabled 1 调用 pm enable ProcessTextActivity"
+
+: > "$PM_LOG"
+set_companion_menu_enabled 0
+assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "set_companion_menu_enabled 0 调用 pm disable ProcessTextActivity"
+
+# -------------------------------------------------------------
+# 测试 12: 模块处于 disable 状态时 sync_companion_apk_and_config 自动隐藏菜单
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 12: 模块存在 disable 标记时同步逻辑自动禁用菜单"
+MOCK_MODDIR="$TEST_TMP/mock_moddir"
+mkdir -p "$MOCK_MODDIR"
+export MODDIR="$MOCK_MODDIR"
+export SERVICE_D_DIR="$TEST_TMP/service.d"
+
+# 正常未禁用状态
+rm -f "$MOCK_MODDIR/disable" "$MOCK_MODDIR/remove"
+: > "$PM_LOG"
+sync_companion_apk_and_config "5244"
+assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "模块未禁用时 sync_companion_apk_and_config 启用系统菜单"
+
+# 创建 disable 标记文件
+touch "$MOCK_MODDIR/disable"
+: > "$PM_LOG"
+sync_companion_apk_and_config "5244"
+assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "模块存在 disable 文件时 sync_companion_apk_and_config 隐藏系统菜单"
+rm -f "$MOCK_MODDIR/disable"
+
+# -------------------------------------------------------------
+# 测试 13: install_boot_companion_sync_guard 生成开机守卫并在模块禁用时隐藏菜单
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 13: 开机守卫脚本 openlist_companion_sync.sh 生成与禁用检测"
+GUARD_SCRIPT="$SERVICE_D_DIR/openlist_companion_sync.sh"
+export OPENLIST_BINARY="$MOCK_MODDIR/bin/openlist"
+install_boot_companion_sync_guard
+
+TOTAL=$((TOTAL + 1))
+if [ -x "$GUARD_SCRIPT" ]; then
+    echo "  [PASS] 成功生成可执行的 openlist_companion_sync.sh"
+else
+    echo "  [FAIL] openlist_companion_sync.sh 未生成或不可执行"
+    FAILED=$((FAILED + 1))
+fi
+
+touch "$MOCK_MODDIR/disable"
+: > "$PM_LOG"
+sh "$GUARD_SCRIPT"
+assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "开机守卫检测到模块 disable 时自动隐藏菜单"
+rm -f "$MOCK_MODDIR/disable"
+
+# -------------------------------------------------------------
+# 测试 14: action.sh 停止与启动服务时同步切换系统菜单可见性
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 14: action.sh 启停服务时同步隐藏/显示系统菜单"
+ACTION_TEST_DIR="$TEST_TMP/action_mod"
+mkdir -p "$ACTION_TEST_DIR/bin"
+cp "$REPO_ROOT/OpenList-Magisk/action.sh" "$ACTION_TEST_DIR/action.sh"
+sed -i "s|__PLACEHOLDER_BINARY_PATH__|$ACTION_TEST_DIR/bin/openlist|g" "$ACTION_TEST_DIR/action.sh"
+cat > "$ACTION_TEST_DIR/module.prop" << 'EOF'
+id=openlist
+description=init
+EOF
+
+# 创建模拟 busybox（根据 fake_running 文件模拟 pgrep/pkill/sed）
+FAKE_RUNNING="$TEST_TMP/fake_openlist_running"
+cat > "$MOCK_BIN_DIR/busybox" << EOF
+#!/usr/bin/env bash
+cmd="\$1"
+shift
+case "\$cmd" in
+    pgrep)
+        if [ -f "$FAKE_RUNNING" ]; then
+            echo "99999"
+            exit 0
+        fi
+        exit 1
+        ;;
+    pkill)
+        rm -f "$FAKE_RUNNING"
+        exit 0
+        ;;
+    sed)
+        exec sed "\$@"
+        ;;
+    *)
+        exec "\$cmd" "\$@"
+        ;;
+esac
+EOF
+chmod +x "$MOCK_BIN_DIR/busybox"
+
+# 创建模拟 service.sh 供 action.sh 启动调用
+cat > "$ACTION_TEST_DIR/service.sh" << EOF
+#!/usr/bin/env bash
+touch "$FAKE_RUNNING"
+exit 0
+EOF
+chmod +x "$ACTION_TEST_DIR/service.sh"
+
+# 14a: 当前正在运行 -> 执行 action.sh 停止服务 -> 应调用 pm disable
+touch "$FAKE_RUNNING"
+: > "$PM_LOG"
+sh "$ACTION_TEST_DIR/action.sh" >/dev/null 2>&1
+assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "action.sh 停止服务后立即隐藏 115 离线系统菜单"
+
+# 14b: 当前未运行 -> 执行 action.sh 启动服务 -> 应调用 pm enable
+rm -f "$FAKE_RUNNING"
+: > "$PM_LOG"
+sh "$ACTION_TEST_DIR/action.sh" >/dev/null 2>&1
+assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "action.sh 启动服务成功后立即启用 115 离线系统菜单"
+
+# -------------------------------------------------------------
+# 测试 15: uninstall.sh clean_companion 清理开机守卫脚本并禁用组件
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 15: uninstall.sh 清理 openlist_companion_sync.sh 及禁用组件"
+touch "$GUARD_SCRIPT"
+: > "$PM_LOG"
+SERVICE_D_DIR="$SERVICE_D_DIR" clean_companion
+
+TOTAL=$((TOTAL + 1))
+if [ ! -f "$GUARD_SCRIPT" ]; then
+    echo "  [PASS] clean_companion 成功清理 openlist_companion_sync.sh"
+else
+    echo "  [FAIL] clean_companion 未清理 openlist_companion_sync.sh"
+    FAILED=$((FAILED + 1))
+fi
+assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "clean_companion 卸载前先禁用 ProcessTextActivity"
+assert_file_contains "$PM_LOG" "^uninstall io\.openlist\.helper$" "clean_companion 调用 pm uninstall 卸载伴侣应用"
 
 # -------------------------------------------------------------
 # 测试汇总报告

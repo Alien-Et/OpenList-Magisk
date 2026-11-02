@@ -30,6 +30,10 @@
 2. **开机 Wi-Fi 未就绪导致 115 存储未初始化自愈**：
    - Android 开机引导阶段，OpenList 守护进程可能早于 Wi-Fi DNS（`proapi.115.com`）解析就绪启动，导致 `/115` 存储初始化失败处于断开状态。
    - `OfflineHelperCore.submitOfflineDownload` 在捕获到 `code != 200` 且提示中包含 `"storage"`、`"not init"` 或 `"disabled"` 时，自动向 OpenList 发送 `POST /api/admin/storage/load_all` 触发存储全量重载，等待 800ms 后自动重试一次离线下载任务，实现用户无感知的网络延迟自愈。
+3. **伴侣菜单可见性与守护服务生命周期强绑定（Companion Menu Visibility Lifecycle Sync）**：
+   - 伴侣应用的 `ProcessTextActivity` 在 `AndroidManifest.xml` 中默认声明 `android:enabled="false"`，确保首次安装未启动服务或启动失败时，系统划词菜单、分享菜单与磁力链接拦截入口默认隐藏。
+   - 当 `service.sh` 确认 OpenList Daemon 启动成功（且模块未被禁用）时，通过 `pm enable io.openlist.helper/io.openlist.helper.ProcessTextActivity` 动态暴露全部触发入口。
+   - 当用户在 Root 管理器中点击“操作”（`action.sh`）停止服务、关闭模块启用开关（生成 `$MODDIR/disable` 或 `remove`），或开机启动失败时，立即通过 `pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity` 隐藏入口，并通过 `/data/adb/service.d/openlist_companion_sync.sh` 与后台状态守卫确保重启或模块禁用后入口不会残留。
 
 ## Considered Options
 

@@ -31,3 +31,7 @@ _Avoid_: 下载器, 插件名
 **Offline Config（离线配置文件）**:
 位于 OpenList 数据目录下的键值配置文件（`offline.conf`），由模块启动脚本自动同步 OpenList API Token、端口与默认路径，并桥接至伴侣应用私有目录供免权限读取。
 _Avoid_: 数据库配置, 环境变量
+
+**Companion Menu Visibility（伴侣菜单可见性）**:
+伴侣应用三个系统级触发入口（`PROCESS_TEXT` 划词菜单、`SEND` 分享菜单、`VIEW` 磁力链接拦截）在 Android 系统中的启用与隐藏状态，与 OpenList Daemon 的在线存活状态及模块启用状态强绑定。
+_Avoid_: 卸载应用, 杀后台

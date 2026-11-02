@@ -247,6 +247,57 @@ extract_openlist_token() {
     echo "$token"
 }
 
+set_companion_menu_enabled() {
+    local enabled="${1:-1}"
+    if command -v pm >/dev/null 2>&1; then
+        if [ "$enabled" = "1" ]; then
+            pm enable io.openlist.helper >/dev/null 2>&1 || true
+            pm enable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+            log "已启用 115 离线下载系统菜单入口 (ProcessTextActivity)"
+        else
+            pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+            log "已隐藏 115 离线下载系统菜单入口 (ProcessTextActivity)"
+        fi
+    fi
+}
+
+install_boot_companion_sync_guard() {
+    local service_d="${SERVICE_D_DIR:-/data/adb/service.d}"
+    local guard_script="$service_d/openlist_companion_sync.sh"
+    mkdir -p "$service_d" 2>/dev/null || true
+    cat > "$guard_script" << EOF
+#!/system/bin/sh
+MODDIR="$MODDIR"
+OPENLIST_BINARY="$OPENLIST_BINARY"
+if [ ! -d "\$MODDIR" ] || [ -f "\$MODDIR/disable" ] || [ -f "\$MODDIR/remove" ]; then
+    if command -v pm >/dev/null 2>&1; then
+        pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+    fi
+    exit 0
+fi
+if ! pgrep -f "\$OPENLIST_BINARY server" >/dev/null 2>&1; then
+    if command -v pm >/dev/null 2>&1; then
+        pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+    fi
+fi
+EOF
+    chmod 755 "$guard_script" 2>/dev/null || true
+}
+
+watch_module_disable_state() {
+    local interval="${WATCH_INTERVAL:-3}"
+    while pgrep -f "$OPENLIST_BINARY server" >/dev/null 2>&1; do
+        if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
+            log "检测到模块已禁用或待移除，正在停止 OpenList 服务并隐藏 115 离线菜单"
+            pkill -f "$OPENLIST_BINARY" 2>/dev/null || true
+            set_companion_menu_enabled 0
+            return 0
+        fi
+        sleep "$interval"
+    done
+    set_companion_menu_enabled 0
+}
+
 sync_companion_apk_and_config() {
     local target_port="${1:-${DETECTED_PORT:-5244}}"
     [ -z "$target_port" ] && target_port="5244"
@@ -258,6 +309,13 @@ sync_companion_apk_and_config() {
             log "伴侣应用未安装，尝试后台安装: $helper_apk"
             pm install -r "$helper_apk" >/dev/null 2>&1 || log "警告: pm install 伴侣应用失败"
         fi
+    fi
+
+    install_boot_companion_sync_guard
+    if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
+        set_companion_menu_enabled 0
+    else
+        set_companion_menu_enabled 1
     fi
 
     # 2. 确保 $DATA_DIR/offline.conf 存在，若不存在则使用预设配置创建
@@ -388,6 +446,12 @@ reload_openlist_storages() {
 main() {
     log "启动 service.sh 于 $(date '+%Y-%m-%d %H:%M:%S')"
 
+    if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
+        log "检测到模块已禁用或待移除，跳过启动并隐藏 115 离线菜单"
+        set_companion_menu_enabled 0
+        exit 0
+    fi
+
     if ! command -v ip >/dev/null; then
         log "错误: 未找到 ip 命令"
         exit 1
@@ -444,8 +508,12 @@ main() {
         update_module_prop_running
         sync_companion_apk_and_config "$DETECTED_PORT"
         reload_openlist_storages "$DETECTED_PORT"
+        if [ "${ENABLE_DISABLE_WATCHER:-1}" = "1" ]; then
+            watch_module_disable_state &
+        fi
     else
         log "错误: 无法启动 OpenList 服务"
+        set_companion_menu_enabled 0
         OUTPUT=$($OPENLIST_BINARY server --data "$DATA_DIR" 2>&1)
         log "手动运行输出: $OUTPUT"
         exit 1

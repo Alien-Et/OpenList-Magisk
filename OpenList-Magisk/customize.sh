@@ -243,6 +243,9 @@ if [ -f "$HELPER_APK" ]; then
     if [ "$(getprop sys.boot_completed)" = "1" ]; then
         ui_print "⚡ 正在动态安装伴侣应用..."
         pm install -r "$HELPER_APK" >/dev/null 2>&1 || true
+        if ! pgrep -f "openlist server" >/dev/null 2>&1; then
+            pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+        fi
     fi
 fi
 
