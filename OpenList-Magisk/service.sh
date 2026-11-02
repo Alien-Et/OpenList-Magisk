@@ -440,7 +440,7 @@ reload_openlist_storages() {
             log "已触发 OpenList 存储重载 (POST $url via wget)"
             wget -q -T 10 -O /dev/null --header="Authorization: ${token}" --post-data="" "$url" >/dev/null 2>&1
         fi
-    ) &
+    ) </dev/null >/dev/null 2>&1 &
 }
 
 main() {
@@ -454,17 +454,20 @@ main() {
 
     if ! command -v ip >/dev/null; then
         log "错误: 未找到 ip 命令"
+        set_companion_menu_enabled 0
         exit 1
     fi
 
     if [ ! -f "$OPENLIST_BINARY" ]; then
         log "错误: $OPENLIST_BINARY 不存在"
+        set_companion_menu_enabled 0
         exit 1
     fi
     if [ ! -x "$OPENLIST_BINARY" ]; then
         log "警告: $OPENLIST_BINARY 不可执行，尝试修复"
         chmod 755 "$OPENLIST_BINARY" 2>/dev/null || {
             log "错误: 无法设置 $OPENLIST_BINARY 的执行权限"
+            set_companion_menu_enabled 0
             exit 1
         }
     fi
@@ -472,12 +475,14 @@ main() {
     mkdir -p "$DATA_DIR" 2>/dev/null
     if [ $? -ne 0 ]; then
         log "错误: 无法创建数据目录 $DATA_DIR"
+        set_companion_menu_enabled 0
         exit 1
     fi
     if [ ! -w "$DATA_DIR" ]; then
         log "警告: 数据目录 $DATA_DIR 不可写，尝试修复权限"
         chmod 777 "$DATA_DIR" 2>/dev/null || {
             log "错误: 无法设置 $DATA_DIR 的写权限"
+            set_companion_menu_enabled 0
             exit 1
         }
     fi
@@ -500,7 +505,7 @@ main() {
     fi
 
     log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
-    $OPENLIST_BINARY server --data "$DATA_DIR" &
+    $OPENLIST_BINARY server --data "$DATA_DIR" </dev/null >/dev/null 2>&1 &
     OPENLIST_PID=$!
 
     if ps -p $OPENLIST_PID >/dev/null || pgrep -f "$OPENLIST_BINARY server --data" >/dev/null; then
@@ -509,7 +514,7 @@ main() {
         sync_companion_apk_and_config "$DETECTED_PORT"
         reload_openlist_storages "$DETECTED_PORT"
         if [ "${ENABLE_DISABLE_WATCHER:-1}" = "1" ]; then
-            watch_module_disable_state &
+            watch_module_disable_state </dev/null >/dev/null 2>&1 &
         fi
     else
         log "错误: 无法启动 OpenList 服务"

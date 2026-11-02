@@ -419,6 +419,93 @@ assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.help
 assert_file_contains "$PM_LOG" "^uninstall io\.openlist\.helper$" "clean_companion 调用 pm uninstall 卸载伴侣应用"
 
 # -------------------------------------------------------------
+# 测试 16: 真实 service.sh 预检失败隐藏菜单 & action.sh 启用后台守护时管道不阻塞
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 16: service.sh 预检失败隐藏菜单及 action.sh 启动真实 service.sh (ENABLE_DISABLE_WATCHER=1) 不挂起管道"
+assert_file_contains "$SERVICE_SH" "watch_module_disable_state </dev/null >/dev/null 2>&1 &" "watch_module_disable_state 重定向关闭标准输入输出与错误流"
+
+# 准备模拟系统命令供真实 service.sh 调用
+cat > "$MOCK_BIN_DIR/ip" << 'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$MOCK_BIN_DIR/ss" << 'EOF'
+#!/usr/bin/env bash
+echo "tcp LISTEN 0 128 *:5244 *:* users:((\"openlist\",pid=99999,fd=3))"
+EOF
+cat > "$MOCK_BIN_DIR/getprop" << 'EOF'
+#!/usr/bin/env bash
+echo "1"
+EOF
+cat > "$MOCK_BIN_DIR/pgrep" << EOF
+#!/usr/bin/env bash
+if [ -f "$FAKE_RUNNING" ]; then
+    echo "99999"
+    exit 0
+fi
+exit 1
+EOF
+cat > "$MOCK_BIN_DIR/pkill" << EOF
+#!/usr/bin/env bash
+rm -f "$FAKE_RUNNING"
+exit 0
+EOF
+cat > "$MOCK_BIN_DIR/ps" << EOF
+#!/usr/bin/env bash
+if [ -f "$FAKE_RUNNING" ]; then
+    exit 0
+fi
+exit 1
+EOF
+chmod +x "$MOCK_BIN_DIR/ip" "$MOCK_BIN_DIR/ss" "$MOCK_BIN_DIR/getprop" "$MOCK_BIN_DIR/pgrep" "$MOCK_BIN_DIR/pkill" "$MOCK_BIN_DIR/ps"
+
+# 部署真实 service.sh 到 ACTION_TEST_DIR
+cp "$REPO_ROOT/OpenList-Magisk/service.sh" "$ACTION_TEST_DIR/service.sh"
+sed -i "s|__PLACEHOLDER_DATA_DIR__|$DATA_DIR|g" "$ACTION_TEST_DIR/service.sh"
+sed -i "s|__PLACEHOLDER_BINARY_PATH__|$ACTION_TEST_DIR/bin/openlist|g" "$ACTION_TEST_DIR/service.sh"
+chmod +x "$ACTION_TEST_DIR/service.sh"
+
+# 16a: 预检失败（OPENLIST_BINARY 不存在）时应主动调用 set_companion_menu_enabled 0
+rm -f "$ACTION_TEST_DIR/bin/openlist" "$FAKE_RUNNING"
+: > "$PM_LOG"
+sh "$ACTION_TEST_DIR/service.sh" >/dev/null 2>&1 || true
+assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "service.sh 预检失败退出前确保隐藏 115 离线菜单"
+
+# 16b: 准备模拟 openlist 守护进程（持续后台存活直到 FAKE_RUNNING 被移除）
+cat > "$ACTION_TEST_DIR/bin/openlist" << EOF
+#!/usr/bin/env bash
+touch "$FAKE_RUNNING"
+while [ -f "$FAKE_RUNNING" ]; do
+    sleep 0.2
+done
+EOF
+chmod +x "$ACTION_TEST_DIR/bin/openlist"
+
+rm -f "$FAKE_RUNNING"
+: > "$PM_LOG"
+export ENABLE_DISABLE_WATCHER=1
+export WATCH_INTERVAL=1
+export RELOAD_DELAY=0
+export TOKEN_RETRY_MAX=1
+
+# 使用命令替换捕获输出；若后台子进程未关闭 stdout/stderr，此处会永久阻塞直到假进程结束
+if command -v timeout >/dev/null 2>&1; then
+    ACTION_OUT=$(timeout 8 sh "$ACTION_TEST_DIR/action.sh" 2>&1)
+    ACTION_RET=$?
+else
+    ACTION_OUT=$(sh "$ACTION_TEST_DIR/action.sh" 2>&1)
+    ACTION_RET=$?
+fi
+
+# 清理模拟后台守护进程
+rm -f "$FAKE_RUNNING"
+sleep 0.3
+
+assert_eq "0" "$ACTION_RET" "ENABLE_DISABLE_WATCHER=1 时 output=\$(sh action.sh) 立即返回且不阻塞管道"
+assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "真实 service.sh 启动后启用 115 离线菜单"
+
+# -------------------------------------------------------------
 # 测试汇总报告
 # -------------------------------------------------------------
 echo ""
