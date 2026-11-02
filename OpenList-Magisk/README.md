@@ -7,6 +7,8 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 
 ## 功能亮点
 
+- **浏览器划词 115 离线下载（OpenListHelper 伴侣应用）**：原生接入系统划词菜单，长按选中磁力/Hash 一键弹出半屏确认弹窗并提交至本地 OpenList 115 离线下载
+- **配置与 Token 自动同步**：服务启动自动从数据库提取 OpenList API Token 与运行端口，零手动配置
 - **灵活安装选项**：支持三种安装位置
   - data/adb/openlist
   - 模块目录/bin
@@ -54,6 +56,37 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 ### 访问方式
 - Web 界面访问：`http://<设备IP>:5244`
 - 初始密码：查看数据目录下的 `初始密码.txt`
+
+### 浏览器划词 115 离线下载（OpenListHelper 伴侣应用）
+
+模块内置轻量级伴侣应用 `OpenListHelper`（包名：`io.openlist.helper`），无需后台常驻进程与剪贴板监听，通过 Android 原生系统划词菜单（`PROCESS_TEXT`）提供极速离线体验。
+
+#### 交互流程
+1. **划选磁力/Hash**：在任意浏览器或应用中长按选中文本中的磁力链接（`magnet:?xt=...`）或 40 位 Hex / 32 位 Base32 InfoHash。
+2. **选择划词操作**：在系统弹出的浮动菜单中点击 **“115 离线”**。
+3. **确认目标路径**：系统底部弹出离线确认半屏弹窗（预览磁力与文件特征），确认或选择目标虚拟路径（默认 `/115/影视/`，预设可选 `/115/`）。
+4. **一键投递执行**：点击“立即离线”，伴侣应用将调用本地 OpenList（`http://127.0.0.1:5244/api/fs/add_offline_download`），通过 `115 Open` 驱动投递至云端离线下载，并通过 Toast 反馈提交状态。
+
+#### 离线配置文件（`offline.conf`）
+配置文件位于 OpenList 数据目录：`$DATA_DIR/offline.conf`（如 `/data/adb/openlist/offline.conf`）。
+
+每次 OpenList 守护服务启动时，`service.sh` 脚本会自动完成：
+- 从 OpenList 数据库（`$DATA_DIR/data.db`）自动读取当前有效 API Token 并写入 `TOKEN=` 字段。
+- 动态获取当前运行端口并更新 `PORT=` 字段。
+- 自动将完整配置安全桥接至伴侣应用私有目录 `/data/data/io.openlist.helper/files/offline.conf`，实现**完全免手动配置 Token**。
+
+配置字段定义：
+```ini
+# OpenList 115 离线下载伴侣配置
+HOST=127.0.0.1                          # OpenList 监听主机
+PORT=5244                               # OpenList 运行端口（服务启动时动态探测并更新）
+TOKEN=openlist-xxxx...                  # OpenList API Token（服务启动时自动从数据库提取）
+PATH=/115/影视/                          # 默认目标虚拟路径
+TOOL=115 Open                           # 离线下载驱动名称（固定为 115 Open）
+DELETE_POLICY=delete_on_upload_succeed  # 下载成功后的清理策略
+PRESET_PATHS=/115/影视/,/115/            # 半屏弹窗预设路径快速选择列表（逗号分隔）
+```
+升级模块与服务重启会自动保留用户对 `PATH`、`DELETE_POLICY` 和 `PRESET_PATHS` 的自定义修改。
 
 ### 数据存储
 - 默认数据目录：`/data/adb/openlist/`

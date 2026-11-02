@@ -74,22 +74,36 @@ clean_data() {
     fi
 }
 
+# 清理伴侣应用及临时配置
+clean_companion() {
+    log "正在清理伴侣应用及离线配置..."
+    rm -f /data/local/tmp/openlist_offline.conf 2>/dev/null || true
+    if command -v pm >/dev/null 2>&1; then
+        pm uninstall io.openlist.helper >/dev/null 2>&1 || true
+    fi
+}
+
 # 主要卸载流程
 main() {
     log "开始卸载 OpenList Magisk 模块..."
 
     # 停止服务
     stop_service
-    
+
+    # 清理伴侣应用及临时配置
+    clean_companion
+
     # 清理二进制文件
     clean_binaries
-    
+
     # 自动清理数据目录
     clean_data
-    
+
     log "卸载完成"
     echo "请重启设备以完成卸载"
 }
 
-# 执行主函数
-main
+# 执行主函数（被 source 时不自动运行）
+if [ "${0##*/}" = "uninstall.sh" ]; then
+    main "$@"
+fi

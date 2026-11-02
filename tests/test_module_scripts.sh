@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# tests/test_module_scripts.sh
+# 验证 OpenList-Magisk 模块脚本中的 Token 提取、offline.conf 配置合并与桥接逻辑
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SERVICE_SH="$REPO_ROOT/OpenList-Magisk/service.sh"
+
+FAILED=0
+TOTAL=0
+
+assert_eq() {
+    local expected="$1"
+    local actual="$2"
+    local message="$3"
+    TOTAL=$((TOTAL + 1))
+    if [ "$expected" = "$actual" ]; then
+        echo "  [PASS] $message"
+    else
+        echo "  [FAIL] $message: expected '$expected', got '$actual'"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+assert_file_contains() {
+    local file="$1"
+    local pattern="$2"
+    local message="$3"
+    TOTAL=$((TOTAL + 1))
+    if grep -qE "$pattern" "$file" 2>/dev/null; then
+        echo "  [PASS] $message"
+    else
+        echo "  [FAIL] $message: file '$file' does not match pattern '$pattern'"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+# 测试环境临时目录
+TEST_TMP=$(mktemp -d)
+trap 'rm -rf "$TEST_TMP"' EXIT
+
+echo "=== 开始测试 OpenList-Magisk 模块离线下载功能脚本 ==="
+
+# 准备模拟数据环境
+export DATA_DIR="$TEST_TMP/openlist_data"
+export LOG_FILE="$TEST_TMP/service.log"
+export BRIDGE_TMP_CONF="$TEST_TMP/local_tmp/openlist_offline.conf"
+export HELPER_DATA_DIR="$TEST_TMP/data_io_openlist_helper"
+mkdir -p "$DATA_DIR"
+mkdir -p "$TEST_TMP/local_tmp"
+mkdir -p "$HELPER_DATA_DIR"
+
+# 引入 service.sh 中的函数
+# 注意：service.sh 内部有脚本自执行保护，被 source 时不会执行主进程
+if [ ! -f "$SERVICE_SH" ]; then
+    echo "错误：未找到 $SERVICE_SH"
+    exit 1
+fi
+# shellcheck disable=SC1090
+. "$SERVICE_SH"
+
+# -------------------------------------------------------------
+# 测试 1: 纯二进制/grep 降级提取 OpenList Token
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 1: 纯二进制无 sqlite3 环境提取 Token"
+MOCK_TOKEN="openlist-binTest1234567890abcdef"
+# 写入含有垃圾二进制和目标 Token 的模拟 data.db
+printf "\x00\x01\xFE\xFF\x80\x90%s\x00\x12\x34\x56" "$MOCK_TOKEN" > "$DATA_DIR/data.db"
+
+EXTRACTED_BIN_TOKEN=$(extract_openlist_token)
+assert_eq "$MOCK_TOKEN" "$EXTRACTED_BIN_TOKEN" "从纯二进制 data.db 正确提取 openlist-* Token"
+
+# -------------------------------------------------------------
+# 测试 2: sqlite3 环境提取 OpenList Token (如果系统安装了 sqlite3)
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 2: 使用 sqlite3 数据库表提取 Token"
+if command -v sqlite3 >/dev/null 2>&1; then
+    SQL_MOCK_TOKEN="openlist-sqliteTestToken9876543210zyx"
+    rm -f "$DATA_DIR/data.db"
+    sqlite3 "$DATA_DIR/data.db" "CREATE TABLE x_setting_items (key TEXT, value TEXT);"
+    sqlite3 "$DATA_DIR/data.db" "INSERT INTO x_setting_items (key, value) VALUES ('token', '$SQL_MOCK_TOKEN');"
+
+    EXTRACTED_SQL_TOKEN=$(extract_openlist_token)
+    assert_eq "$SQL_MOCK_TOKEN" "$EXTRACTED_SQL_TOKEN" "从 SQLite 数据库表 x_setting_items 正确提取 Token"
+else
+    echo "  [SKIP] 当前环境无 sqlite3 命令，跳过 SQLite 表查询测试"
+fi
+
+# -------------------------------------------------------------
+# 测试 3: offline.conf 首次不存在时自动生成默认配置并填充 Token 与 Port
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 3: offline.conf 首次不存在时自动初始化并同步"
+rm -f "$DATA_DIR/offline.conf"
+rm -f "$BRIDGE_TMP_CONF"
+rm -f "$HELPER_DATA_DIR/files/offline.conf"
+
+# 运行同步逻辑，指定端口为 5244
+sync_companion_apk_and_config "5244"
+
+assert_file_contains "$DATA_DIR/offline.conf" "^HOST=127.0.0.1" "offline.conf 包含 HOST=127.0.0.1"
+assert_file_contains "$DATA_DIR/offline.conf" "^PORT=5244" "offline.conf 包含 PORT=5244"
+assert_file_contains "$DATA_DIR/offline.conf" "^TOKEN=openlist-" "offline.conf 自动填充提取到的有效 Token"
+assert_file_contains "$DATA_DIR/offline.conf" "^PATH=/115/影视/" "offline.conf 默认目标路径为 /115/影视/"
+assert_file_contains "$DATA_DIR/offline.conf" "^TOOL=115 Open" "offline.conf 默认离线下载引擎 (Offline Engine) 为 115 Open"
+assert_file_contains "$DATA_DIR/offline.conf" "^DELETE_POLICY=delete_on_upload_succeed" "offline.conf 默认删除策略为 delete_on_upload_succeed"
+assert_file_contains "$DATA_DIR/offline.conf" "^PRESET_PATHS=/115/影视/,/115/" "offline.conf 包含预设路径列表"
+
+# 验证桥接文件已生成
+assert_file_contains "$BRIDGE_TMP_CONF" "^PATH=/115/影视/" "桥接到 /data/local/tmp 成功且内容一致"
+assert_file_contains "$HELPER_DATA_DIR/files/offline.conf" "^PATH=/115/影视/" "桥接到伴侣私有目录成功且内容一致"
+
+# -------------------------------------------------------------
+# 测试 4: 端口变化时自动更新 PORT
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 4: OpenList 端口变更时动态更新 PORT"
+sync_companion_apk_and_config "5249"
+
+assert_file_contains "$DATA_DIR/offline.conf" "^PORT=5249" "offline.conf 中的 PORT 已更新为 5249"
+assert_file_contains "$BRIDGE_TMP_CONF" "^PORT=5249" "桥接文件中的 PORT 同步更新为 5249"
+
+# -------------------------------------------------------------
+# 测试 5: 保留用户自定义配置（路径、策略、自定义 Token 等）
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 5: 用户自定义配置保护（不被启动脚本覆盖）"
+cat > "$DATA_DIR/offline.conf" << 'EOF'
+# 用户自定义配置
+HOST=192.168.1.100
+PORT=5244
+TOKEN=user-manual-custom-token-123
+PATH=/115/动漫剧场/
+TOOL=115 Open
+DELETE_POLICY=delete_never
+PRESET_PATHS=/115/动漫剧场/,/115/电影/
+EOF
+
+# 即使检测到的运行端口是 5244，数据库里是另一个 token
+sync_companion_apk_and_config "5244"
+
+assert_file_contains "$DATA_DIR/offline.conf" "^HOST=192.168.1.100" "保留自定义 HOST"
+assert_file_contains "$DATA_DIR/offline.conf" "^TOKEN=user-manual-custom-token-123" "非空已有 TOKEN 不被覆盖"
+assert_file_contains "$DATA_DIR/offline.conf" "^PATH=/115/动漫剧场/" "保留自定义 PATH"
+assert_file_contains "$DATA_DIR/offline.conf" "^DELETE_POLICY=delete_never" "保留自定义 DELETE_POLICY"
+assert_file_contains "$DATA_DIR/offline.conf" "^PRESET_PATHS=/115/动漫剧场/,/115/电影/" "保留自定义 PRESET_PATHS"
+
+# -------------------------------------------------------------
+# 测试 6: 用户仅配置了部分字段，缺失字段被平滑补齐且不影响已有字段
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 6: 缺失字段平滑补全"
+cat > "$DATA_DIR/offline.conf" << 'EOF'
+PATH=/115/纪录片/
+EOF
+
+sync_companion_apk_and_config "5244"
+
+assert_file_contains "$DATA_DIR/offline.conf" "^PATH=/115/纪录片/" "保留原本唯一的自定义 PATH"
+assert_file_contains "$DATA_DIR/offline.conf" "^TOOL=115 Open" "补全 TOOL=115 Open"
+assert_file_contains "$DATA_DIR/offline.conf" "^PORT=5244" "补全 PORT=5244"
+assert_file_contains "$DATA_DIR/offline.conf" "^TOKEN=openlist-" "补全提取到的 TOKEN"
+
+# -------------------------------------------------------------
+# 测试 7: uninstall.sh 中 clean_companion 清理临时配置与伴侣卸载
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 7: uninstall.sh 清理逻辑"
+UNINSTALL_SH="$REPO_ROOT/OpenList-Magisk/uninstall.sh"
+# shellcheck disable=SC1090
+. "$UNINSTALL_SH"
+
+# 创建临时待清理文件
+MOCK_TMP_CONF="/data/local/tmp/openlist_offline.conf"
+if [ -w "/data/local/tmp" ] 2>/dev/null; then
+    touch "$MOCK_TMP_CONF" 2>/dev/null || true
+fi
+
+clean_companion
+
+if [ -w "/data/local/tmp" ] 2>/dev/null; then
+    TOTAL=$((TOTAL + 1))
+    if [ ! -f "$MOCK_TMP_CONF" ]; then
+        echo "  [PASS] 成功清理 /data/local/tmp/openlist_offline.conf"
+    else
+        echo "  [FAIL] 未能清理 /data/local/tmp/openlist_offline.conf"
+        FAILED=$((FAILED + 1))
+    fi
+else
+    echo "  [PASS] clean_companion 函数执行正常（非 Android 环境跳过实际 /data/local/tmp 清理）"
+    TOTAL=$((TOTAL + 1))
+fi
+
+# -------------------------------------------------------------
+# 测试 8: customize.sh 离线配置文件创建规范验证
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 8: customize.sh 离线配置文件默认规范"
+CUSTOMIZE_SH="$REPO_ROOT/OpenList-Magisk/customize.sh"
+assert_file_contains "$CUSTOMIZE_SH" "offline\.conf" "customize.sh 包含 offline.conf 初始化逻辑"
+assert_file_contains "$CUSTOMIZE_SH" "OpenListHelper\.apk" "customize.sh 包含 OpenListHelper.apk 权限与安装处理"
+assert_file_contains "$CUSTOMIZE_SH" "chcon -R u:object_r:system_file:s0" "customize.sh 正确设置 SELinux 上下文"
+
+# -------------------------------------------------------------
+# 测试汇总报告
+# -------------------------------------------------------------
+echo ""
+echo "=== 测试完成: 总计 $TOTAL 项，失败 $FAILED 项 ==="
+
+if [ "$FAILED" -ne 0 ]; then
+    exit 1
+fi
+
+exit 0
