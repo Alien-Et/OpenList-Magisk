@@ -18,10 +18,10 @@
     "semantic_hash": "3e91f87a8f7663aa638615303af676b8"
   },
   "OpenList-Magisk/service.sh": {
-    "mtime": 1793620546.703555,
-    "seen": 1793621461.703904,
-    "ast_hash": "f4a72d8be3bf74167fdf1f91c509b0d9",
-    "semantic_hash": "f4a72d8be3bf74167fdf1f91c509b0d9"
+    "mtime": 1793623801.8901799,
+    "seen": 1793624009.4478133,
+    "ast_hash": "263c9cd9c69794b6e4e3b54be072a90c",
+    "semantic_hash": ""
   },
   "OpenList-Magisk/uninstall-user.sh": {
     "mtime": 1793618065.3438005,
@@ -42,28 +42,28 @@
     "semantic_hash": "7a93f46f7faa7c26e1533d8ebc84e840"
   },
   "companion-apk/src/io/openlist/helper/OfflineHelperCore.java": {
-    "mtime": 1793620408.1497386,
-    "seen": 1793621461.7039077,
-    "ast_hash": "13d4f9e8c592ff9953125700083c2647",
-    "semantic_hash": "13d4f9e8c592ff9953125700083c2647"
+    "mtime": 1793623881.7014573,
+    "seen": 1793624009.4478192,
+    "ast_hash": "f16a31346c44faacc4de165747061c20",
+    "semantic_hash": ""
   },
   "companion-apk/src/io/openlist/helper/ProcessTextActivity.java": {
-    "mtime": 1793620460.1772587,
-    "seen": 1793621461.7039087,
-    "ast_hash": "a517df05bbffb74ae9d06d4c4bda37de",
-    "semantic_hash": "a517df05bbffb74ae9d06d4c4bda37de"
+    "mtime": 1793623923.9740324,
+    "seen": 1793624009.4478202,
+    "ast_hash": "060f01af8596748edb6ab0d5f8ce9978",
+    "semantic_hash": ""
   },
   "companion-apk/test/io/openlist/helper/OfflineHelperCoreTest.java": {
-    "mtime": 1793620485.7162354,
-    "seen": 1793621461.7039094,
-    "ast_hash": "d98eb9c2156a603a8325285f89ee91d8",
-    "semantic_hash": "d98eb9c2156a603a8325285f89ee91d8"
+    "mtime": 1793623907.1351624,
+    "seen": 1793624009.4478216,
+    "ast_hash": "808bb1e6d910b962f228424803974534",
+    "semantic_hash": ""
   },
   "tests/test_module_scripts.sh": {
-    "mtime": 1793620575.8545794,
-    "seen": 1793621461.7039104,
-    "ast_hash": "01f47f6ee51694fa4c75bdb1a1b66dfe",
-    "semantic_hash": "01f47f6ee51694fa4c75bdb1a1b66dfe"
+    "mtime": 1793623815.6858487,
+    "seen": 1793624009.4478228,
+    "ast_hash": "e5a2dd1379ccecb6112587c93dfe916a",
+    "semantic_hash": ""
   },
   "update.json": {
     "mtime": 1793618065.3533573,
@@ -90,22 +90,22 @@
     "semantic_hash": "02ced277f8fa78af56f194e7f6285e2c"
   },
   "OpenList-Magisk/README.md": {
-    "mtime": 1793620562.889784,
-    "seen": 1793621461.7039146,
-    "ast_hash": "9991a0bb49fb4a879d34466054d1d4f6",
-    "semantic_hash": "9991a0bb49fb4a879d34466054d1d4f6"
+    "mtime": 1793623945.077926,
+    "seen": 1793624009.447829,
+    "ast_hash": "d56a500618302213ca85f350541d7193",
+    "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793620554.885767,
-    "seen": 1793621461.7039156,
-    "ast_hash": "0bba4c05b75bd2d4797aadeccd6b7de5",
-    "semantic_hash": "0bba4c05b75bd2d4797aadeccd6b7de5"
+    "mtime": 1793623934.3037035,
+    "seen": 1793624009.44783,
+    "ast_hash": "3cdbf5c4db7e85272132f1b36e3b7e9a",
+    "semantic_hash": ""
   },
   "docs/adr/0001-companion-apk-process-text-offline-download.md": {
-    "mtime": 1793618669.01522,
-    "seen": 1793621461.7039163,
-    "ast_hash": "277d98f6c997b9bf50a136244a8045bc",
-    "semantic_hash": "277d98f6c997b9bf50a136244a8045bc"
+    "mtime": 1793623964.4262674,
+    "seen": 1793624009.4478312,
+    "ast_hash": "7223b144537fb377ca54109141bc7e29",
+    "semantic_hash": ""
   },
   "install-interface.jpg": {
     "mtime": 1793618065.3438005,
@@ -124,5 +124,11 @@
     "seen": 1793621461.7039187,
     "ast_hash": "ab48163775d7f814a134ad37adb5dcf3",
     "semantic_hash": "ab48163775d7f814a134ad37adb5dcf3"
+  },
+  "CLAUDE.md": {
+    "mtime": 1793621506.761672,
+    "seen": 1793621550.7987356,
+    "ast_hash": "67d88e9d0760c3ba54c75dfd9551c1c5",
+    "semantic_hash": ""
   }
 }

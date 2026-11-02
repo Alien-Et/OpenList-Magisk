@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class OfflineHelperCoreTest {
@@ -35,6 +36,9 @@ public class OfflineHelperCoreTest {
         runTest("testJsonPayloadEscaping", OfflineHelperCoreTest::testJsonPayloadEscaping);
         runTest("testMockHttpServerSuccessAndFailure", OfflineHelperCoreTest::testMockHttpServerSuccessAndFailure);
         runTest("testConfigBasedPayloadAndSubmit", OfflineHelperCoreTest::testConfigBasedPayloadAndSubmit);
+        runTest("testTokenSanitization", OfflineHelperCoreTest::testTokenSanitization);
+        runTest("testApiResultIsStorageError", OfflineHelperCoreTest::testApiResultIsStorageError);
+        runTest("testAutoHealStorageNotInit", OfflineHelperCoreTest::testAutoHealStorageNotInit);
 
         System.out.println("=== Test Summary: " + testsPassed + "/" + testsRun + " passed ===");
         if (testsPassed != testsRun) {
@@ -370,6 +374,123 @@ public class OfflineHelperCoreTest {
             assertTrue(res.success, "submitOfflineDownload with config should succeed");
             assertEquals("token_from_config", receivedAuth.get(), "Auth header matched from config");
             assertTrue(receivedBody.get().contains("/115/电视剧/"), "Request body matched path from config");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static void testTokenSanitization() {
+        // 1. openlist token with string suffix > 80 chars
+        String longOpenListToken = "openlist-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4iLCJleHAiOjE3NjM1NjM4OTN9.someLongSignatureDataHereXYZ1234567890string";
+        assertTrue(longOpenListToken.length() > 80, "Length > 80");
+        String sanitized = OfflineHelperCore.sanitizeToken(longOpenListToken);
+        assertEquals("openlist-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4iLCJleHAiOjE3NjM1NjM4OTN9.someLongSignatureDataHereXYZ1234567890", sanitized, "Suffix 'string' stripped");
+
+        // 2. alist token with string suffix > 80 chars
+        String longAListToken = "alist-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4iLCJleHAiOjE3NjM1NjM4OTN9.someLongSignatureDataHereXYZ1234567890string";
+        String sanitizedAList = OfflineHelperCore.sanitizeToken(longAListToken);
+        assertEquals("alist-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4iLCJleHAiOjE3NjM1NjM4OTN9.someLongSignatureDataHereXYZ1234567890", sanitizedAList, "AList suffix 'string' stripped");
+
+        // 3. Normal token without string suffix
+        String normalToken = "openlist-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.normalTokenWithoutSuffix";
+        assertEquals(normalToken, OfflineHelperCore.sanitizeToken(normalToken), "Normal token without string suffix untouched");
+
+        // 4. Short token ending in string (< 26 chars)
+        String shortToken = "openlist-shortstring";
+        assertEquals(shortToken, OfflineHelperCore.sanitizeToken(shortToken), "Short token < 26 untouched");
+
+        // 4b. Token with length >= 26 ending in string is sanitized
+        String pollutedToken27 = "alist-123456789012345string"; // 27 chars >= 26
+        assertEquals("alist-123456789012345", OfflineHelperCore.sanitizeToken(pollutedToken27), "Token length >= 26 stripped");
+
+        // 5. Token parsed from config string
+        String confWithSuffix = "HOST=127.0.0.1\nPORT=5244\nTOKEN=" + longOpenListToken + "\n";
+        OfflineHelperCore.OfflineConfig parsed = OfflineHelperCore.OfflineConfig.parse(confWithSuffix);
+        assertEquals("openlist-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4iLCJleHAiOjE3NjM1NjM4OTN9.someLongSignatureDataHereXYZ1234567890", parsed.token, "Parsed config token sanitized");
+    }
+
+    private static void testApiResultIsStorageError() {
+        OfflineHelperCore.ApiResult successRes = new OfflineHelperCore.ApiResult(true, 200, "success", "{}");
+        assertTrue(!successRes.isStorageError(), "Success result is not storage error");
+
+        OfflineHelperCore.ApiResult storageInMsg = new OfflineHelperCore.ApiResult(false, 500, "storage not init", "");
+        assertTrue(storageInMsg.isStorageError(), "Storage not init in message detected");
+
+        OfflineHelperCore.ApiResult disabledInBody = new OfflineHelperCore.ApiResult(false, 500, "unknown error", "{\"error\":\"storage disabled\"}");
+        assertTrue(disabledInBody.isStorageError(), "Storage disabled in body detected");
+
+        OfflineHelperCore.ApiResult otherError = new OfflineHelperCore.ApiResult(false, 500, "timeout", "network timeout");
+        assertTrue(!otherError.isStorageError(), "Other error is not storage error");
+    }
+
+    private static void testAutoHealStorageNotInit() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        int testPort = server.getAddress().getPort();
+
+        AtomicInteger addOfflineCalls = new AtomicInteger(0);
+        AtomicInteger loadAllCalls = new AtomicInteger(0);
+        AtomicReference<String> loadAllAuth = new AtomicReference<>("");
+
+        // /api/fs/add_offline_download: fails on 1st call with storage not init, succeeds on 2nd call
+        server.createContext("/api/fs/add_offline_download", exchange -> {
+            int callNum = addOfflineCalls.incrementAndGet();
+            byte[] respBytes;
+            int httpStatus;
+            if (callNum == 1) {
+                // First call: storage not init
+                respBytes = "{\"code\":500,\"message\":\"storage not init: dial tcp: lookup proapi.115.com: no such host\",\"data\":null}".getBytes(StandardCharsets.UTF_8);
+                httpStatus = 200;
+            } else {
+                // Second call: success
+                respBytes = "{\"code\":200,\"message\":\"success\",\"data\":null}".getBytes(StandardCharsets.UTF_8);
+                httpStatus = 200;
+            }
+
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(httpStatus, respBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(respBytes);
+                os.flush();
+            }
+        });
+
+        // /api/admin/storage/load_all: records call and returns success
+        server.createContext("/api/admin/storage/load_all", exchange -> {
+            loadAllCalls.incrementAndGet();
+            loadAllAuth.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] respBytes = "{\"code\":200,\"message\":\"success\",\"data\":null}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(200, respBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(respBytes);
+                os.flush();
+            }
+        });
+
+        server.start();
+
+        try {
+            List<String> urls = Collections.singletonList("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567");
+            String testToken = "openlist-token-test-123456789012345678901234567890123456789012345678901234567890string";
+
+            OfflineHelperCore.ApiResult res = OfflineHelperCore.submitOfflineDownload(
+                    "http://127.0.0.1:" + testPort,
+                    testToken,
+                    urls,
+                    "/115/影视/",
+                    "115 Open",
+                    "delete_on_upload_succeed",
+                    5000
+            );
+
+            // Verifications
+            assertEquals(2, addOfflineCalls.get(), "add_offline_download called twice (initial + retry)");
+            assertEquals(1, loadAllCalls.get(), "/api/admin/storage/load_all called exactly once");
+            // Also verifies token sanitization in Authorization header sent to load_all
+            assertEquals("openlist-token-test-123456789012345678901234567890123456789012345678901234567890", loadAllAuth.get(), "Sanitized token sent to /api/admin/storage/load_all");
+            assertTrue(res.success, "Auto-healed submitOfflineDownload should succeed");
+            assertEquals(200, res.code, "Final result code is 200");
+            assertEquals("success", res.message, "Final result message is success");
         } finally {
             server.stop(0);
         }

@@ -62,16 +62,16 @@ fi
 . "$SERVICE_SH"
 
 # -------------------------------------------------------------
-# 测试 1: 纯二进制/grep 降级提取 OpenList Token
+# 测试 1: 纯二进制/grep 降级提取 OpenList Token (剥离连续 string 列值)
 # -------------------------------------------------------------
 echo ""
 echo "-> 测试 1: 纯二进制无 sqlite3 环境提取 Token"
-MOCK_TOKEN="openlist-binTest1234567890abcdef"
-# 写入含有垃圾二进制和目标 Token 的模拟 data.db
-printf "\x00\x01\xFE\xFF\x80\x90%s\x00\x12\x34\x56" "$MOCK_TOKEN" > "$DATA_DIR/data.db"
+MOCK_TOKEN="openlist-6d91b7d6-0b6e-4766-9bc2-680f599c9b59SbVfjghkfiP64UbC0i8apymduCgubSoMsgfKm1bHIFeXhmytpXSGHRsKhpd8e6IX"
+# 写入含有 SQLite 连续字段 (token+value+string) 的模拟二进制 data.db
+printf "\x00\x01\xFE\xFF\x80\x90token%sstring\x00\x12\x34\x56" "$MOCK_TOKEN" > "$DATA_DIR/data.db"
 
 EXTRACTED_BIN_TOKEN=$(extract_openlist_token)
-assert_eq "$MOCK_TOKEN" "$EXTRACTED_BIN_TOKEN" "从纯二进制 data.db 正确提取 openlist-* Token"
+assert_eq "$MOCK_TOKEN" "$EXTRACTED_BIN_TOKEN" "从纯二进制 data.db 正确提取 openlist-* Token 并剥离尾部 string"
 
 # -------------------------------------------------------------
 # 测试 2: sqlite3 环境提取 OpenList Token (如果系统安装了 sqlite3)
@@ -166,10 +166,66 @@ assert_file_contains "$DATA_DIR/offline.conf" "^PORT=5244" "补全 PORT=5244"
 assert_file_contains "$DATA_DIR/offline.conf" "^TOKEN=openlist-" "补全提取到的 TOKEN"
 
 # -------------------------------------------------------------
-# 测试 7: uninstall.sh 中 clean_companion 清理临时配置与伴侣卸载
+# 测试 7: 历史被污染的 TOKEN=...string 自动清洗
 # -------------------------------------------------------------
 echo ""
-echo "-> 测试 7: uninstall.sh 清理逻辑"
+echo "-> 测试 7: 历史被污染的 TOKEN=...string 自动清洗"
+POLLUTED_TOKEN="openlist-6d91b7d6-0b6e-4766-9bc2-680f599c9b59SbVfjghkfiP64UbC0i8apymduCgubSoMsgfKm1bHIFeXhmytpXSGHRsKhpd8e6IXstring"
+CLEANED_TOKEN="openlist-6d91b7d6-0b6e-4766-9bc2-680f599c9b59SbVfjghkfiP64UbC0i8apymduCgubSoMsgfKm1bHIFeXhmytpXSGHRsKhpd8e6IX"
+
+# 构造含有该 Token 的二进制 data.db
+printf "\x00\x01\xFE\xFF\x80\x90token%sstring\x00\x12\x34\x56" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
+
+cat > "$DATA_DIR/offline.conf" << EOF
+HOST=127.0.0.1
+PORT=5244
+TOKEN=$POLLUTED_TOKEN
+PATH=/115/影视/
+TOOL=115 Open
+DELETE_POLICY=delete_on_upload_succeed
+PRESET_PATHS=/115/影视/,/115/
+EOF
+
+# 运行同步逻辑
+sync_companion_apk_and_config "5244"
+
+assert_file_contains "$DATA_DIR/offline.conf" "^TOKEN=$CLEANED_TOKEN$" "offline.conf 中被污染的 TOKEN 尾部 string 被成功剥除"
+assert_file_contains "$BRIDGE_TMP_CONF" "^TOKEN=$CLEANED_TOKEN$" "桥接配置中的 TOKEN 尾部 string 同步被剥除"
+assert_file_contains "$HELPER_DATA_DIR/files/offline.conf" "^TOKEN=$CLEANED_TOKEN$" "伴侣私有目录配置中的 TOKEN 尾部 string 同步被剥除"
+
+# 7b: 验证若 data.db 缺失时，offline.conf 中被污染的 TOKEN 仍被就地剥离 string 后缀
+rm -f "$DATA_DIR/data.db"
+cat > "$DATA_DIR/offline.conf" << EOF
+HOST=127.0.0.1
+PORT=5244
+TOKEN=openlist-noDbPollutedTokenTest123456789string
+PATH=/115/影视/
+TOOL=115 Open
+DELETE_POLICY=delete_on_upload_succeed
+PRESET_PATHS=/115/影视/,/115/
+EOF
+sync_companion_apk_and_config "5244"
+assert_file_contains "$DATA_DIR/offline.conf" "^TOKEN=openlist-noDbPollutedTokenTest123456789$" "无 data.db 时 offline.conf 中的 TOKEN 尾部 string 就地剥除"
+
+# 7c: 验证含 CRLF (\r\n) 换行符的 offline.conf 中被污染的 TOKEN 尾部 string 仍被正确剥除
+printf "HOST=127.0.0.1\r\nPORT=5244\r\nTOKEN=openlist-crlfPollutedTokenTest123456789string\r\nPATH=/115/影视/\r\nTOOL=115 Open\r\nDELETE_POLICY=delete_on_upload_succeed\r\nPRESET_PATHS=/115/影视/,/115/\r\n" > "$DATA_DIR/offline.conf"
+sync_companion_apk_and_config "5244"
+assert_file_contains "$DATA_DIR/offline.conf" "^TOKEN=openlist-crlfPollutedTokenTest123456789" "CRLF 换行符下 offline.conf 中的 TOKEN 尾部 string 成功剥除"
+
+# -------------------------------------------------------------
+# 测试 8: 开机存储自动重载函数 reload_openlist_storages 测试
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 8: 开机存储自动重载逻辑"
+RELOAD_DELAY=0 reload_openlist_storages "5244"
+sleep 0.2
+assert_file_contains "$LOG_FILE" "存储重载" "服务成功触发或记录存储重载逻辑"
+
+# -------------------------------------------------------------
+# 测试 9: uninstall.sh 中 clean_companion 清理临时配置与伴侣卸载
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 9: uninstall.sh 清理逻辑"
 UNINSTALL_SH="$REPO_ROOT/OpenList-Magisk/uninstall.sh"
 # shellcheck disable=SC1090
 . "$UNINSTALL_SH"
@@ -196,10 +252,10 @@ else
 fi
 
 # -------------------------------------------------------------
-# 测试 8: customize.sh 离线配置文件创建规范验证
+# 测试 10: customize.sh 离线配置文件创建规范验证
 # -------------------------------------------------------------
 echo ""
-echo "-> 测试 8: customize.sh 离线配置文件默认规范"
+echo "-> 测试 10: customize.sh 离线配置文件默认规范"
 CUSTOMIZE_SH="$REPO_ROOT/OpenList-Magisk/customize.sh"
 assert_file_contains "$CUSTOMIZE_SH" "offline\.conf" "customize.sh 包含 offline.conf 初始化逻辑"
 assert_file_contains "$CUSTOMIZE_SH" "OpenListHelper\.apk" "customize.sh 包含 OpenListHelper.apk 权限与安装处理"

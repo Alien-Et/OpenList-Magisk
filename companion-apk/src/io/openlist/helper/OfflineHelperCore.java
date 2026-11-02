@@ -28,6 +28,9 @@ public final class OfflineHelperCore {
     private static final Pattern HEX_HASH_PATTERN = Pattern.compile("(?i)\\b[0-9a-f]{40}\\b");
     private static final Pattern BASE32_HASH_PATTERN = Pattern.compile("(?i)\\b[a-z2-7]{32}\\b");
 
+    private static final String SQLITE_STRING_TYPE_SUFFIX = "string";
+    private static final int MIN_POLLUTED_TOKEN_LENGTH = 26;
+
     private OfflineHelperCore() {}
 
     private static class TextSpan {
@@ -153,6 +156,23 @@ public final class OfflineHelperCore {
     }
 
     /**
+     * Defensive sanitization for OpenList/AList token.
+     * If a token starts with openlist- or alist- and ends with the literal SQLite column type
+     * suffix "string" (i.e., token.endsWith(SQLITE_STRING_TYPE_SUFFIX) && token.length() >= MIN_POLLUTED_TOKEN_LENGTH),
+     * strip the trailing "string" automatically.
+     */
+    public static String sanitizeToken(String token) {
+        if (token == null) return "";
+        token = token.trim();
+        if ((token.startsWith("openlist-") || token.startsWith("alist-"))
+                && token.endsWith(SQLITE_STRING_TYPE_SUFFIX)
+                && token.length() >= MIN_POLLUTED_TOKEN_LENGTH) {
+            token = token.substring(0, token.length() - SQLITE_STRING_TYPE_SUFFIX.length()).trim();
+        }
+        return token;
+    }
+
+    /**
      * Configuration for OpenList offline download.
      */
     public static class OfflineConfig {
@@ -169,7 +189,7 @@ public final class OfflineHelperCore {
         public OfflineConfig(String host, int port, String token, String path, String tool, String deletePolicy, List<String> presetPaths) {
             if (host != null && !host.trim().isEmpty()) this.host = host.trim();
             if (port > 0) this.port = port;
-            if (token != null) this.token = token.trim();
+            if (token != null) this.token = sanitizeToken(token);
             if (path != null && !path.trim().isEmpty()) this.path = path.trim();
             if (tool != null && !tool.trim().isEmpty()) this.tool = tool.trim();
             if (deletePolicy != null && !deletePolicy.trim().isEmpty()) this.deletePolicy = deletePolicy.trim();
@@ -207,7 +227,7 @@ public final class OfflineHelperCore {
                         } catch (NumberFormatException ignored) {}
                         break;
                     case "TOKEN":
-                        cfg.token = val;
+                        cfg.token = sanitizeToken(val);
                         break;
                     case "PATH":
                         if (!val.isEmpty()) cfg.path = val;
@@ -265,9 +285,9 @@ public final class OfflineHelperCore {
 
             // 2. Token: Uses bridgeConfig.token if non-empty (or userSavedConfig.token if user set it when bridge was empty)
             if (bridgeConfig != null && bridgeConfig.token != null && !bridgeConfig.token.trim().isEmpty()) {
-                merged.token = bridgeConfig.token.trim();
+                merged.token = sanitizeToken(bridgeConfig.token);
             } else if (userSavedConfig != null && userSavedConfig.token != null && !userSavedConfig.token.trim().isEmpty()) {
-                merged.token = userSavedConfig.token.trim();
+                merged.token = sanitizeToken(userSavedConfig.token);
             } else {
                 merged.token = "";
             }
@@ -434,6 +454,12 @@ public final class OfflineHelperCore {
             this.rawBody = rawBody != null ? rawBody : "";
         }
 
+        public boolean isStorageError() {
+            if (success) return false;
+            String combined = ((message != null ? message : "") + " " + (rawBody != null ? rawBody : "")).toLowerCase(Locale.ROOT);
+            return combined.contains("storage") || combined.contains("not init") || combined.contains("disabled");
+        }
+
         @Override
         public String toString() {
             return "ApiResult{success=" + success + ", code=" + code + ", message='" + message + "'}";
@@ -447,7 +473,7 @@ public final class OfflineHelperCore {
         String host = (config != null && config.host != null && !config.host.isEmpty()) ? config.host : "127.0.0.1";
         int port = (config != null && config.port > 0) ? config.port : 5244;
         String baseUrl = "http://" + host + ":" + port;
-        String token = (config != null) ? config.token : "";
+        String token = (config != null) ? sanitizeToken(config.token) : "";
         String path = (config != null) ? config.path : "/115/影视/";
         String tool = (config != null) ? config.tool : "115 Open";
         String deletePolicy = (config != null) ? config.deletePolicy : "delete_on_upload_succeed";
@@ -455,9 +481,82 @@ public final class OfflineHelperCore {
     }
 
     /**
+     * Reloads all storages by calling OpenList /api/admin/storage/load_all.
+     * Useful when 115 Open storage was initialized before Wi-Fi DNS was available.
+     */
+    public static boolean reloadAllStorage(String baseUrl, String token, int timeoutMs) {
+        if (baseUrl == null || baseUrl.trim().isEmpty()) {
+            baseUrl = "http://127.0.0.1:5244";
+        }
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        String endpoint = baseUrl + "/api/admin/storage/load_all";
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(endpoint);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(timeoutMs > 0 ? timeoutMs : 10000);
+            conn.setReadTimeout(timeoutMs > 0 ? timeoutMs : 10000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            String sanitized = sanitizeToken(token);
+            if (!sanitized.isEmpty()) {
+                conn.setRequestProperty("Authorization", sanitized);
+            }
+
+            byte[] bodyBytes = "{}".getBytes(StandardCharsets.UTF_8);
+            conn.setRequestProperty("Content-Length", String.valueOf(bodyBytes.length));
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(bodyBytes);
+                os.flush();
+            }
+
+            int httpCode = conn.getResponseCode();
+            InputStream rawStream = (httpCode >= 200 && httpCode < 400) ? conn.getInputStream() : conn.getErrorStream();
+            if (rawStream != null) {
+                try (InputStream is = rawStream; ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                    byte[] buf = new byte[1024];
+                    int len;
+                    while ((len = is.read(buf)) != -1) {
+                        baos.write(buf, 0, len);
+                    }
+                }
+            }
+            return (httpCode == 200);
+        } catch (Exception ignored) {
+            return false;
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    /**
      * Submits offline download URLs to OpenList daemon.
+     * Automatically attempts recovery via /api/admin/storage/load_all if storage is uninitialized.
      */
     public static ApiResult submitOfflineDownload(String baseUrl, String token, List<String> urls, String path, String tool, String deletePolicy, int timeoutMs) {
+        String sanitizedToken = sanitizeToken(token);
+        ApiResult res = executeAddOfflineDownload(baseUrl, sanitizedToken, urls, path, tool, deletePolicy, timeoutMs);
+
+        // Auto-heal: if code != 200 and message contains storage/not init/disabled, reload storage and retry once
+        if (!res.success && res.isStorageError()) {
+            reloadAllStorage(baseUrl, sanitizedToken, timeoutMs);
+            try {
+                Thread.sleep(800);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            res = executeAddOfflineDownload(baseUrl, sanitizedToken, urls, path, tool, deletePolicy, timeoutMs);
+        }
+
+        return res;
+    }
+
+    private static ApiResult executeAddOfflineDownload(String baseUrl, String token, List<String> urls, String path, String tool, String deletePolicy, int timeoutMs) {
         if (baseUrl == null || baseUrl.trim().isEmpty()) {
             baseUrl = "http://127.0.0.1:5244";
         }
@@ -475,8 +574,9 @@ public final class OfflineHelperCore {
             conn.setReadTimeout(timeoutMs > 0 ? timeoutMs : 10000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-            if (token != null && !token.trim().isEmpty()) {
-                conn.setRequestProperty("Authorization", token.trim());
+            String sanitizedToken = sanitizeToken(token);
+            if (!sanitizedToken.isEmpty()) {
+                conn.setRequestProperty("Authorization", sanitizedToken);
             }
 
             byte[] bodyBytes = payload.getBytes(StandardCharsets.UTF_8);
@@ -503,7 +603,7 @@ public final class OfflineHelperCore {
             int jsonCode = -1;
             String jsonMsg = "";
 
-            Matcher codeMatcher = Pattern.compile("\"code\"\\s*:\\s*(\\d+)").matcher(responseBody);
+            Matcher codeMatcher = Pattern.compile("\"code\"\\s*:\\s*(-?\\d+)").matcher(responseBody);
             if (codeMatcher.find()) {
                 try {
                     jsonCode = Integer.parseInt(codeMatcher.group(1));

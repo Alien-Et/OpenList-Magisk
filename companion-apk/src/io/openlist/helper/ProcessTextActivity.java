@@ -2,6 +2,7 @@ package io.openlist.helper;
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.content.ClipData;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -37,14 +38,13 @@ public class ProcessTextActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        String incomingText = extractIncomingText();
+        String incomingText = extractIncomingText(getIntent());
         OfflineHelperCore.OfflineConfig config = loadEffectiveConfig();
 
         showOfflineConfirmSheet(incomingText, config);
     }
 
-    private String extractIncomingText() {
-        Intent intent = getIntent();
+    public static String extractIncomingText(Intent intent) {
         if (intent == null) return "";
 
         CharSequence processText = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT);
@@ -60,6 +60,34 @@ public class ProcessTextActivity extends Activity {
         String dataString = intent.getDataString();
         if (dataString != null && !dataString.isEmpty()) {
             return dataString.trim();
+        }
+
+        ClipData clipData = intent.getClipData();
+        if (clipData != null && clipData.getItemCount() > 0) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < clipData.getItemCount(); i++) {
+                ClipData.Item item = clipData.getItemAt(i);
+                if (item != null) {
+                    CharSequence itemText = item.getText();
+                    if (itemText != null && itemText.length() > 0) {
+                        String s = itemText.toString().trim();
+                        if (!s.isEmpty()) {
+                            if (sb.length() > 0) sb.append("\n");
+                            sb.append(s);
+                        }
+                    }
+                    if (item.getUri() != null) {
+                        String uriStr = item.getUri().toString();
+                        if (uriStr != null && !uriStr.trim().isEmpty()) {
+                            if (sb.length() > 0) sb.append("\n");
+                            sb.append(uriStr.trim());
+                        }
+                    }
+                }
+            }
+            if (sb.length() > 0) {
+                return sb.toString();
+            }
         }
 
         return "";

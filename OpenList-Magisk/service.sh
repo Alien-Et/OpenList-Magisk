@@ -220,7 +220,7 @@ update_module_prop_running() {
 
 extract_openlist_token() {
     local db_file="$DATA_DIR/data.db"
-    [ ! -f "$db_file" ] && return 1
+    [ ! -f "$db_file" ] && return 0
 
     local token=""
     # 方法 1：若存在 sqlite3 命令则直接查询 x_setting_items
@@ -240,6 +240,9 @@ extract_openlist_token() {
     if [ -z "$token" ]; then
         token=$(tr -cd '[:print:]\n' < "$db_file" 2>/dev/null | grep -oE "$token_regex" | head -n 1)
     fi
+
+    # SQLite 二进制页面中，x_setting_items 表里 value 紧跟 type='string'，纯二进制抽取会贪婪带出尾部 string
+    token=$(echo "$token" | tr -d '\r' | sed 's/string$//')
 
     echo "$token"
 }
@@ -285,15 +288,25 @@ EOF
     # 3. 更新 PORT 为当前检测到的运行端口
     sed -i "s|^PORT=.*|PORT=${target_port}|" "$conf_file"
 
-    # 4. 若 TOKEN 为空，从 data.db 提取 Token 并填入（若数据库正在初始化则重试）
+    # 4. 若 TOKEN 为空或以 string 结尾（历史提取 Bug 导致），从 data.db 提取或清洗并更新
     local current_token
-    current_token=$(grep -E '^TOKEN=' "$conf_file" | head -n 1 | cut -d'=' -f2-)
+    current_token=$(grep -E '^TOKEN=' "$conf_file" | head -n 1 | cut -d'=' -f2- | tr -d '\r' | sed 's/string$//')
+
+    local token_needs_update=0
     if [ -z "$current_token" ]; then
+        token_needs_update=1
+    elif grep -E '^TOKEN=' "$conf_file" | head -n 1 | tr -d '\r' | grep -qE 'string$'; then
+        token_needs_update=1
+        sed -i "s|^TOKEN=.*|TOKEN=${current_token}|" "$conf_file"
+        log "已从 offline.conf 中清理历史残留的 string 后缀"
+    fi
+
+    if [ "$token_needs_update" -eq 1 ]; then
         local extracted_token=""
         local retry_max="${TOKEN_RETRY_MAX:-5}"
         local retry_count=0
         while [ "$retry_count" -lt "$retry_max" ]; do
-            extracted_token=$(extract_openlist_token)
+            extracted_token=$(extract_openlist_token 2>/dev/null || true)
             [ -n "$extracted_token" ] && break
             retry_count=$((retry_count + 1))
             if [ "$retry_count" -lt "$retry_max" ]; then
@@ -303,8 +316,10 @@ EOF
             fi
         done
         if [ -n "$extracted_token" ]; then
-            sed -i "s|^TOKEN=.*|TOKEN=${extracted_token}|" "$conf_file"
-            log "已自动从 data.db 提取 Token 并写入 offline.conf"
+            if [ "$extracted_token" != "$current_token" ] || [ -z "$current_token" ]; then
+                sed -i "s|^TOKEN=.*|TOKEN=${extracted_token}|" "$conf_file"
+                log "已自动从 data.db 提取 Token 并更新 offline.conf"
+            fi
         fi
     fi
 
@@ -329,6 +344,45 @@ EOF
         chmod 600 "$helper_files_dir/offline.conf" 2>/dev/null || true
         restorecon -R "$helper_files_dir" 2>/dev/null || true
     fi
+}
+
+reload_openlist_storages() {
+    local port="${1:-${DETECTED_PORT:-5244}}"
+    [ -z "$port" ] && port="5244"
+    local conf_file="$DATA_DIR/offline.conf"
+    local token=""
+    if [ -f "$conf_file" ]; then
+        token=$(grep -E '^TOKEN=' "$conf_file" | head -n 1 | cut -d'=' -f2- | tr -d '\r' | sed 's/string$//')
+    fi
+    if [ -z "$token" ]; then
+        token=$(extract_openlist_token 2>/dev/null || true)
+    fi
+
+    if [ -z "$token" ]; then
+        log "提示: 未获取到有效 Token，跳过开机存储自动重载"
+        return 0
+    fi
+
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+        log "提示: 未找到 curl 或 wget，跳过开机存储自动重载"
+        return 0
+    fi
+
+    # 延迟待网络与 DNS 就绪后异步重载全部存储驱动 (例如 115 Open、GoogleDrive 等在开机无网时初始化失败的云存储)
+    (
+        delay="${RELOAD_DELAY:-3}"
+        if [ "$delay" -gt 0 ] 2>/dev/null; then
+            sleep "$delay"
+        fi
+        url="http://127.0.0.1:${port}/api/admin/storage/load_all"
+        if command -v curl >/dev/null 2>&1; then
+            log "已触发 OpenList 存储重载 (POST $url via curl)"
+            curl -s -m 10 -X POST -H "Authorization: ${token}" "$url" >/dev/null 2>&1
+        elif command -v wget >/dev/null 2>&1; then
+            log "已触发 OpenList 存储重载 (POST $url via wget)"
+            wget -q -T 10 -O /dev/null --header="Authorization: ${token}" --post-data="" "$url" >/dev/null 2>&1
+        fi
+    ) &
 }
 
 main() {
@@ -389,6 +443,7 @@ main() {
         log "OpenList 服务启动成功 (PID: $OPENLIST_PID)"
         update_module_prop_running
         sync_companion_apk_and_config "$DETECTED_PORT"
+        reload_openlist_storages "$DETECTED_PORT"
     else
         log "错误: 无法启动 OpenList 服务"
         OUTPUT=$($OPENLIST_BINARY server --data "$DATA_DIR" 2>&1)

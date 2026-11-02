@@ -7,8 +7,8 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 
 ## 功能亮点
 
-- **浏览器划词 115 离线下载（OpenListHelper 伴侣应用）**：原生接入系统划词菜单，长按选中磁力/Hash 一键弹出半屏确认弹窗并提交至本地 OpenList 115 离线下载
-- **配置与 Token 自动同步**：服务启动自动从数据库提取 OpenList API Token 与运行端口，零手动配置
+- **浏览器划词与磁力链接 115 离线下载（OpenListHelper 伴侣应用）**：原生接入系统划词菜单与 Magnet 协议关联，支持划选纯文本、直接点击超链接或长按分享链接一键唤起半屏弹窗并提交至本地 OpenList 115 离线下载
+- **配置与 Token 自动同步及存储自动重连**：服务启动自动从数据库提取 OpenList API Token 并剥离类型后缀，网络就绪后自动重连 115 等云存储，零手动配置
 - **灵活安装选项**：支持三种安装位置
   - data/adb/openlist
   - 模块目录/bin
@@ -57,23 +57,28 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 - Web 界面访问：`http://<设备IP>:5244`
 - 初始密码：查看数据目录下的 `初始密码.txt`
 
-### 浏览器划词 115 离线下载（OpenListHelper 伴侣应用）
+### 浏览器 115 离线下载（OpenListHelper 伴侣应用）
 
-模块内置轻量级伴侣应用 `OpenListHelper`（包名：`io.openlist.helper`），无需后台常驻进程与剪贴板监听，通过 Android 原生系统划词菜单（`PROCESS_TEXT`）提供极速离线体验。
+模块内置轻量级伴侣应用 `OpenListHelper`（包名：`io.openlist.helper`），无需后台常驻进程与剪贴板监听，支持以下三种便捷触发方式快速唤起半屏离线弹窗：
 
-#### 交互流程
-1. **划选磁力/Hash**：在任意浏览器或应用中长按选中文本中的磁力链接（`magnet:?xt=...`）或 40 位 Hex / 32 位 Base32 InfoHash。
-2. **选择划词操作**：在系统弹出的浮动菜单中点击 **“115 离线”**。
-3. **确认目标路径**：系统底部弹出离线确认半屏弹窗（预览磁力与文件特征），确认或选择目标虚拟路径（默认 `/115/影视/`，预设可选 `/115/`）。
-4. **一键投递执行**：点击“立即离线”，伴侣应用将调用本地 OpenList（`http://127.0.0.1:5244/api/fs/add_offline_download`），通过 `115 Open` 驱动投递至云端离线下载，并通过 Toast 反馈提交状态。
+#### 浏览器三种触发方式
+1. **纯文本磁力/Hash**：长按划选文字（磁力链接 `magnet:?xt=...` 或 40 位 Hex / 32 位 Base32 InfoHash）-> 点击系统划词菜单 **“115 离线”**。
+2. **超链接形式的磁力链接 (`<a href="magnet:...">`)**：直接**点击磁力超链接**即可直接唤起半屏确认弹窗。
+3. **长按磁力超链接分享**：长按磁力超链接 -> 点击 **“共享链接”**（或“分享链接”）-> 选择 **“OpenList 115 离线”** 唤起半屏确认弹窗。
 
-#### 离线配置文件（`offline.conf`）
+#### 交互流程与离线投递
+1. **唤起半屏弹窗**：通过上述任意一种方式触发后，系统底部将弹出离线确认半屏弹窗（预览磁力与文件特征）。
+2. **确认目标路径**：确认或选择目标虚拟路径（默认 `/115/影视/`，预设可选 `/115/`，或直接自定义输入）。
+3. **一键投递执行**：点击“立即离线”，伴侣应用将调用本地 OpenList（`http://127.0.0.1:5244/api/fs/add_offline_download`），通过 `115 Open` 驱动投递至云端离线下载，并通过 Toast 反馈提交状态。
+
+#### 离线配置文件（`offline.conf`）与开机自动恢复
 配置文件位于 OpenList 数据目录：`$DATA_DIR/offline.conf`（如 `/data/adb/openlist/offline.conf`）。
 
 每次 OpenList 守护服务启动时，`service.sh` 脚本会自动完成：
-- 从 OpenList 数据库（`$DATA_DIR/data.db`）自动读取当前有效 API Token 并写入 `TOKEN=` 字段。
+- 从 OpenList 数据库（`$DATA_DIR/data.db`）自动读取当前有效 API Token（并自动清洗 SQLite 连续记录中的类型后缀）并写入 `TOKEN=` 字段。
 - 动态获取当前运行端口并更新 `PORT=` 字段。
 - 自动将完整配置安全桥接至伴侣应用私有目录 `/data/data/io.openlist.helper/files/offline.conf`，实现**完全免手动配置 Token**。
+- 开机网络与 DNS 就绪后，后台自动调用 OpenList API (`POST /api/admin/storage/load_all`) 重载所有存储驱动，避免开机初始无网络导致的 `115 Open` 等云存储初始化失败。
 
 配置字段定义：
 ```ini
