@@ -2,3 +2,5 @@
 *.tar.gz
 temp_bins/
 .claude/
+graphify-out/.graphify_python
+graphify-out/.graphify_root

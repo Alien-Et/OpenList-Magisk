@@ -1,0 +1,128 @@
+{
+  "OpenList-Magisk/META-INF/com/google/android/update-binary": {
+    "mtime": 1793618065.3438005,
+    "seen": 1793621461.7038958,
+    "ast_hash": "edfc1cdeb53e2140f01ef16f4bb1c032",
+    "semantic_hash": "edfc1cdeb53e2140f01ef16f4bb1c032"
+  },
+  "OpenList-Magisk/action.sh": {
+    "mtime": 1793618065.3438005,
+    "seen": 1793621461.7039006,
+    "ast_hash": "9bde0d6d1a1a3b1ed2c570e95549f662",
+    "semantic_hash": "9bde0d6d1a1a3b1ed2c570e95549f662"
+  },
+  "OpenList-Magisk/customize.sh": {
+    "mtime": 1793619309.7583113,
+    "seen": 1793621461.7039027,
+    "ast_hash": "3e91f87a8f7663aa638615303af676b8",
+    "semantic_hash": "3e91f87a8f7663aa638615303af676b8"
+  },
+  "OpenList-Magisk/service.sh": {
+    "mtime": 1793620546.703555,
+    "seen": 1793621461.703904,
+    "ast_hash": "f4a72d8be3bf74167fdf1f91c509b0d9",
+    "semantic_hash": "f4a72d8be3bf74167fdf1f91c509b0d9"
+  },
+  "OpenList-Magisk/uninstall-user.sh": {
+    "mtime": 1793618065.3438005,
+    "seen": 1793621461.703905,
+    "ast_hash": "b79f6de1a9cc67ab1d630d235fc0d885",
+    "semantic_hash": "b79f6de1a9cc67ab1d630d235fc0d885"
+  },
+  "OpenList-Magisk/uninstall.sh": {
+    "mtime": 1793620519.667176,
+    "seen": 1793621461.703906,
+    "ast_hash": "50ca1ceed8b35d3e348369af46d9e075",
+    "semantic_hash": "50ca1ceed8b35d3e348369af46d9e075"
+  },
+  "companion-apk/build-apk.sh": {
+    "mtime": 1793619781.7956338,
+    "seen": 1793621461.703907,
+    "ast_hash": "7a93f46f7faa7c26e1533d8ebc84e840",
+    "semantic_hash": "7a93f46f7faa7c26e1533d8ebc84e840"
+  },
+  "companion-apk/src/io/openlist/helper/OfflineHelperCore.java": {
+    "mtime": 1793620408.1497386,
+    "seen": 1793621461.7039077,
+    "ast_hash": "13d4f9e8c592ff9953125700083c2647",
+    "semantic_hash": "13d4f9e8c592ff9953125700083c2647"
+  },
+  "companion-apk/src/io/openlist/helper/ProcessTextActivity.java": {
+    "mtime": 1793620460.1772587,
+    "seen": 1793621461.7039087,
+    "ast_hash": "a517df05bbffb74ae9d06d4c4bda37de",
+    "semantic_hash": "a517df05bbffb74ae9d06d4c4bda37de"
+  },
+  "companion-apk/test/io/openlist/helper/OfflineHelperCoreTest.java": {
+    "mtime": 1793620485.7162354,
+    "seen": 1793621461.7039094,
+    "ast_hash": "d98eb9c2156a603a8325285f89ee91d8",
+    "semantic_hash": "d98eb9c2156a603a8325285f89ee91d8"
+  },
+  "tests/test_module_scripts.sh": {
+    "mtime": 1793620575.8545794,
+    "seen": 1793621461.7039104,
+    "ast_hash": "01f47f6ee51694fa4c75bdb1a1b66dfe",
+    "semantic_hash": "01f47f6ee51694fa4c75bdb1a1b66dfe"
+  },
+  "update.json": {
+    "mtime": 1793618065.3533573,
+    "seen": 1793621461.7039115,
+    "ast_hash": "8061731d3ae9a54abab800e57a91e8a2",
+    "semantic_hash": "8061731d3ae9a54abab800e57a91e8a2"
+  },
+  ".github/workflows/1.yml": {
+    "mtime": 1793619341.7322211,
+    "seen": 1793621461.7039125,
+    "ast_hash": "3569ed110907a990b4891b5c49e53bda",
+    "semantic_hash": "3569ed110907a990b4891b5c49e53bda"
+  },
+  "GLOSSARY.md": {
+    "mtime": 1793618668.915599,
+    "seen": 1793621461.7039132,
+    "ast_hash": "080d7c9b8d68c538a889dd87a4629373",
+    "semantic_hash": "080d7c9b8d68c538a889dd87a4629373"
+  },
+  "OpenList-Magisk/CHANGELOG.md": {
+    "mtime": 1793618065.3429668,
+    "seen": 1793621461.703914,
+    "ast_hash": "02ced277f8fa78af56f194e7f6285e2c",
+    "semantic_hash": "02ced277f8fa78af56f194e7f6285e2c"
+  },
+  "OpenList-Magisk/README.md": {
+    "mtime": 1793620562.889784,
+    "seen": 1793621461.7039146,
+    "ast_hash": "9991a0bb49fb4a879d34466054d1d4f6",
+    "semantic_hash": "9991a0bb49fb4a879d34466054d1d4f6"
+  },
+  "README.md": {
+    "mtime": 1793620554.885767,
+    "seen": 1793621461.7039156,
+    "ast_hash": "0bba4c05b75bd2d4797aadeccd6b7de5",
+    "semantic_hash": "0bba4c05b75bd2d4797aadeccd6b7de5"
+  },
+  "docs/adr/0001-companion-apk-process-text-offline-download.md": {
+    "mtime": 1793618669.01522,
+    "seen": 1793621461.7039163,
+    "ast_hash": "277d98f6c997b9bf50a136244a8045bc",
+    "semantic_hash": "277d98f6c997b9bf50a136244a8045bc"
+  },
+  "install-interface.jpg": {
+    "mtime": 1793618065.3438005,
+    "seen": 1793621461.703917,
+    "ast_hash": "b87924ff6d6528911802e89923b3006d",
+    "semantic_hash": "b87924ff6d6528911802e89923b3006d"
+  },
+  "kernelsu-mobile-network.jpg": {
+    "mtime": 1793618065.3513534,
+    "seen": 1793621461.7039177,
+    "ast_hash": "ef724d6041214fe89f49bfc8f27c5f76",
+    "semantic_hash": "ef724d6041214fe89f49bfc8f27c5f76"
+  },
+  "kernelsu-wifi.jpg": {
+    "mtime": 1793618065.3533573,
+    "seen": 1793621461.7039187,
+    "ast_hash": "ab48163775d7f814a134ad37adb5dcf3",
+    "semantic_hash": "ab48163775d7f814a134ad37adb5dcf3"
+  }
+}
