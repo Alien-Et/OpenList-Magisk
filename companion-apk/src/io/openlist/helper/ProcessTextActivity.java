@@ -9,6 +9,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -17,6 +18,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -28,11 +30,13 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 public class ProcessTextActivity extends Activity {
 
     private Dialog currentDialog;
+    private Dialog pickerDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -232,6 +236,14 @@ public class ProcessTextActivity extends Activity {
         pathLabel.setLayoutParams(pathLabelParams);
         rootLayout.addView(pathLabel);
 
+        // Target path input row (pathEditText + "📁 选择目录" Button)
+        LinearLayout pathRow = new LinearLayout(this);
+        pathRow.setOrientation(LinearLayout.HORIZONTAL);
+        pathRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams pathRowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pathRowParams.bottomMargin = dpToPx(8);
+        pathRow.setLayoutParams(pathRowParams);
+
         // Target path EditText pre-filled with config.path (default "/115/影视/")
         EditText pathEditText = new EditText(this);
         pathEditText.setSingleLine(true);
@@ -246,10 +258,46 @@ public class ProcessTextActivity extends Activity {
         pathEditBg.setCornerRadius(dpToPx(8));
         pathEditText.setBackground(pathEditBg);
 
-        LinearLayout.LayoutParams pathEditParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        pathEditParams.bottomMargin = dpToPx(12);
+        LinearLayout.LayoutParams pathEditParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         pathEditText.setLayoutParams(pathEditParams);
-        rootLayout.addView(pathEditText);
+        pathRow.addView(pathEditText);
+
+        // Preset chips container
+        LinearLayout presetContainer = new LinearLayout(this);
+        presetContainer.setOrientation(LinearLayout.HORIZONTAL);
+        presetContainer.setGravity(Gravity.CENTER_VERTICAL);
+
+        // "📁 选择目录" Button
+        Button pickDirBtn = new Button(this);
+        pickDirBtn.setText("📁 选择目录");
+        pickDirBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        pickDirBtn.setTextColor(Color.parseColor("#1D4ED8"));
+        pickDirBtn.setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8));
+        GradientDrawable pickDirBg = new GradientDrawable();
+        pickDirBg.setColor(Color.parseColor("#EFF6FF"));
+        pickDirBg.setStroke(dpToPx(1), Color.parseColor("#BFDBFE"));
+        pickDirBg.setCornerRadius(dpToPx(8));
+        pickDirBtn.setBackground(pickDirBg);
+        LinearLayout.LayoutParams pickDirParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pickDirParams.leftMargin = dpToPx(8);
+        pickDirBtn.setLayoutParams(pickDirParams);
+        pickDirBtn.setOnClickListener(v -> {
+            showDirectoryPickerDialog(pathEditText.getText().toString(), config, pathEditText, presetContainer);
+        });
+        pathRow.addView(pickDirBtn);
+
+        rootLayout.addView(pathRow);
+
+        // Preset path chips scroll view
+        HorizontalScrollView presetScrollView = new HorizontalScrollView(this);
+        presetScrollView.setHorizontalScrollBarEnabled(false);
+        LinearLayout.LayoutParams presetScrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        presetScrollParams.bottomMargin = dpToPx(12);
+        presetScrollView.setLayoutParams(presetScrollParams);
+
+        renderPresetChips(presetContainer, config, pathEditText);
+        presetScrollView.addView(presetContainer);
+        rootLayout.addView(presetScrollView);
 
         // Token warning if token is empty
         if (config.token == null || config.token.trim().isEmpty()) {
@@ -324,10 +372,18 @@ public class ProcessTextActivity extends Activity {
             if (targetPath.isEmpty()) {
                 targetPath = "/115/影视/";
             }
+            targetPath = OfflineHelperCore.normalizeVirtualPath(targetPath);
 
             // Persist confirmed path to user_offline.conf so user's chosen directory is remembered next time
             config.path = targetPath;
+            if (config.presetPaths == null) {
+                config.presetPaths = new ArrayList<>();
+            }
+            if (!config.presetPaths.contains(targetPath)) {
+                config.presetPaths.add(0, targetPath);
+            }
             saveUserConfig(config);
+            renderPresetChips(presetContainer, config, pathEditText);
 
             submitBtn.setEnabled(false);
             submitBtn.setText("正在提交...");
@@ -363,6 +419,408 @@ public class ProcessTextActivity extends Activity {
 
         currentDialog.setContentView(outerScroll);
         currentDialog.show();
+    }
+
+    private void renderPresetChips(LinearLayout container, OfflineHelperCore.OfflineConfig config, EditText pathEditText) {
+        container.removeAllViews();
+        if (config == null || config.presetPaths == null || config.presetPaths.isEmpty()) {
+            return;
+        }
+        for (String preset : config.presetPaths) {
+            if (preset == null || preset.trim().isEmpty()) continue;
+            final String finalPreset = preset.trim();
+
+            TextView chip = new TextView(this);
+            chip.setText(finalPreset);
+            chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            chip.setTextColor(Color.parseColor("#1D4ED8"));
+            chip.setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5));
+
+            GradientDrawable chipBg = new GradientDrawable();
+            chipBg.setColor(Color.parseColor("#EFF6FF"));
+            chipBg.setStroke(dpToPx(1), Color.parseColor("#BFDBFE"));
+            chipBg.setCornerRadius(dpToPx(14));
+            chip.setBackground(chipBg);
+
+            LinearLayout.LayoutParams chipParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            chipParams.rightMargin = dpToPx(6);
+            chip.setLayoutParams(chipParams);
+
+            chip.setOnClickListener(v -> {
+                pathEditText.setText(finalPreset);
+            });
+
+            container.addView(chip);
+        }
+    }
+
+    private void showDirectoryPickerDialog(
+            String initialPath,
+            OfflineHelperCore.OfflineConfig config,
+            EditText targetPathEditText,
+            LinearLayout presetContainer
+    ) {
+        if (pickerDialog != null && pickerDialog.isShowing()) {
+            pickerDialog.dismiss();
+        }
+
+        pickerDialog = new Dialog(this);
+        pickerDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        Window window = pickerDialog.getWindow();
+        if (window != null) {
+            window.setGravity(Gravity.BOTTOM);
+            window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setWindowAnimations(android.R.style.Animation_InputMethod);
+        }
+
+        pickerDialog.setCanceledOnTouchOutside(true);
+        pickerDialog.setOnDismissListener(d -> pickerDialog = null);
+
+        LinearLayout rootLayout = new LinearLayout(this);
+        rootLayout.setOrientation(LinearLayout.VERTICAL);
+        rootLayout.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        rootLayout.setPadding(dpToPx(20), dpToPx(12), dpToPx(20), dpToPx(24));
+
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(Color.WHITE);
+        float r = dpToPx(20);
+        cardBg.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
+        rootLayout.setBackground(cardBg);
+
+        // Top drag handle
+        View handleBar = new View(this);
+        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(dpToPx(40), dpToPx(4));
+        handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+        handleParams.bottomMargin = dpToPx(12);
+        handleBar.setLayoutParams(handleParams);
+        GradientDrawable handleBg = new GradientDrawable();
+        handleBg.setColor(Color.parseColor("#D1D5DB"));
+        handleBg.setCornerRadius(dpToPx(2));
+        handleBar.setBackground(handleBg);
+        rootLayout.addView(handleBar);
+
+        // Header Title
+        TextView titleView = new TextView(this);
+        titleView.setText("选择保存文件夹");
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        titleView.setTextColor(Color.parseColor("#111827"));
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.bottomMargin = dpToPx(8);
+        titleView.setLayoutParams(titleParams);
+        rootLayout.addView(titleView);
+
+        // Current browsing path
+        String startPath = (initialPath != null && !initialPath.trim().isEmpty()) ? initialPath.trim() : "/115/影视/";
+        final String[] currentBrowsePath = new String[]{ OfflineHelperCore.normalizeVirtualPath(startPath) };
+
+        TextView currentPathView = new TextView(this);
+        currentPathView.setText("当前路径: " + currentBrowsePath[0]);
+        currentPathView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        currentPathView.setTypeface(Typeface.DEFAULT_BOLD);
+        currentPathView.setTextColor(Color.parseColor("#4B5563"));
+        LinearLayout.LayoutParams curPathParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        curPathParams.bottomMargin = dpToPx(8);
+        currentPathView.setLayoutParams(curPathParams);
+        rootLayout.addView(currentPathView);
+
+        // Navigation bar row
+        LinearLayout navBar = new LinearLayout(this);
+        navBar.setOrientation(LinearLayout.HORIZONTAL);
+        navBar.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams navBarParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        navBarParams.bottomMargin = dpToPx(8);
+        navBar.setLayoutParams(navBarParams);
+
+        // "⬆️ 上级目录" Button
+        Button upBtn = new Button(this);
+        upBtn.setText("⬆️ 上级目录");
+        upBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        upBtn.setTextColor(Color.parseColor("#374151"));
+        upBtn.setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6));
+        GradientDrawable upBg = new GradientDrawable();
+        upBg.setColor(Color.parseColor("#F3F4F6"));
+        upBg.setStroke(dpToPx(1), Color.parseColor("#E5E7EB"));
+        upBg.setCornerRadius(dpToPx(6));
+        upBtn.setBackground(upBg);
+        LinearLayout.LayoutParams upParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        upParams.rightMargin = dpToPx(8);
+        upBtn.setLayoutParams(upParams);
+        navBar.addView(upBtn);
+
+        // "🏠 根目录 (/)" Button
+        Button rootBtn = new Button(this);
+        rootBtn.setText("🏠 根目录 (/)");
+        rootBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        rootBtn.setTextColor(Color.parseColor("#374151"));
+        rootBtn.setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6));
+        GradientDrawable rootBg = new GradientDrawable();
+        rootBg.setColor(Color.parseColor("#F3F4F6"));
+        rootBg.setStroke(dpToPx(1), Color.parseColor("#E5E7EB"));
+        rootBg.setCornerRadius(dpToPx(6));
+        rootBtn.setBackground(rootBg);
+        LinearLayout.LayoutParams rootParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rootParams.rightMargin = dpToPx(8);
+        rootBtn.setLayoutParams(rootParams);
+        navBar.addView(rootBtn);
+
+        // "🔄 刷新" Button
+        Button refreshBtn = new Button(this);
+        refreshBtn.setText("🔄 刷新");
+        refreshBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        refreshBtn.setTextColor(Color.parseColor("#374151"));
+        refreshBtn.setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6));
+        GradientDrawable refBg = new GradientDrawable();
+        refBg.setColor(Color.parseColor("#F3F4F6"));
+        refBg.setStroke(dpToPx(1), Color.parseColor("#E5E7EB"));
+        refBg.setCornerRadius(dpToPx(6));
+        refreshBtn.setBackground(refBg);
+        LinearLayout.LayoutParams refParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        refreshBtn.setLayoutParams(refParams);
+        navBar.addView(refreshBtn);
+
+        rootLayout.addView(navBar);
+
+        // Scrollable Folder List
+        ScrollView listScroll = new ScrollView(this);
+        listScroll.setFillViewport(true);
+        GradientDrawable listBg = new GradientDrawable();
+        listBg.setColor(Color.parseColor("#F9FAFB"));
+        listBg.setStroke(dpToPx(1), Color.parseColor("#E5E7EB"));
+        listBg.setCornerRadius(dpToPx(8));
+        listScroll.setBackground(listBg);
+
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(240));
+        scrollParams.bottomMargin = dpToPx(12);
+        listScroll.setLayoutParams(scrollParams);
+
+        LinearLayout folderListLayout = new LinearLayout(this);
+        folderListLayout.setOrientation(LinearLayout.VERTICAL);
+        folderListLayout.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        folderListLayout.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8));
+        listScroll.addView(folderListLayout);
+
+        rootLayout.addView(listScroll);
+
+        // Nav click listeners
+        upBtn.setOnClickListener(v -> {
+            loadDirectoryIntoPicker(OfflineHelperCore.parentVirtualPath(currentBrowsePath[0]), config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+        });
+        rootBtn.setOnClickListener(v -> {
+            loadDirectoryIntoPicker("/", config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+        });
+        refreshBtn.setOnClickListener(v -> {
+            loadDirectoryIntoPicker(currentBrowsePath[0], config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+        });
+
+        // Bottom button row
+        LinearLayout bottomRow = new LinearLayout(this);
+        bottomRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams bottomParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bottomRow.setLayoutParams(bottomParams);
+
+        // Cancel Button
+        Button cancelBtn = new Button(this);
+        cancelBtn.setText("取消");
+        cancelBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        cancelBtn.setTextColor(Color.parseColor("#4B5563"));
+        cancelBtn.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+        GradientDrawable cancelBg = new GradientDrawable();
+        cancelBg.setColor(Color.parseColor("#F3F4F6"));
+        cancelBg.setCornerRadius(dpToPx(8));
+        cancelBtn.setBackground(cancelBg);
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        cancelParams.rightMargin = dpToPx(8);
+        cancelBtn.setLayoutParams(cancelParams);
+        cancelBtn.setOnClickListener(v -> pickerDialog.dismiss());
+        bottomRow.addView(cancelBtn);
+
+        // Confirm Button
+        Button confirmBtn = new Button(this);
+        confirmBtn.setText("✅ 选择当前目录");
+        confirmBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        confirmBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        confirmBtn.setTextColor(Color.WHITE);
+        confirmBtn.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+        GradientDrawable confirmBg = new GradientDrawable();
+        confirmBg.setColor(Color.parseColor("#2563EB"));
+        confirmBg.setCornerRadius(dpToPx(8));
+        confirmBtn.setBackground(confirmBg);
+        LinearLayout.LayoutParams confirmParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.5f);
+        confirmParams.leftMargin = dpToPx(8);
+        confirmBtn.setLayoutParams(confirmParams);
+
+        confirmBtn.setOnClickListener(v -> {
+            String chosen = OfflineHelperCore.normalizeVirtualPath(currentBrowsePath[0]);
+            targetPathEditText.setText(chosen);
+            if (config.presetPaths == null) {
+                config.presetPaths = new ArrayList<>();
+            }
+            if (!config.presetPaths.contains(chosen)) {
+                config.presetPaths.add(0, chosen);
+            }
+            config.path = chosen;
+            saveUserConfig(config);
+            if (presetContainer != null) {
+                renderPresetChips(presetContainer, config, targetPathEditText);
+            }
+            pickerDialog.dismiss();
+        });
+        bottomRow.addView(confirmBtn);
+
+        rootLayout.addView(bottomRow);
+
+        pickerDialog.setContentView(rootLayout);
+        pickerDialog.show();
+
+        // Initial load
+        loadDirectoryIntoPicker(currentBrowsePath[0], config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+    }
+
+    private void loadDirectoryIntoPicker(
+            String targetPath,
+            OfflineHelperCore.OfflineConfig config,
+            String[] currentBrowsePath,
+            TextView currentPathView,
+            Button upBtn,
+            LinearLayout folderListLayout
+    ) {
+        String normalized = OfflineHelperCore.normalizeVirtualPath(targetPath);
+        currentBrowsePath[0] = normalized;
+        currentPathView.setText("当前路径: " + normalized);
+
+        boolean isRoot = "/".equals(normalized);
+        upBtn.setEnabled(!isRoot);
+        upBtn.setAlpha(isRoot ? 0.4f : 1.0f);
+
+        folderListLayout.removeAllViews();
+
+        TextView loadingView = new TextView(this);
+        loadingView.setText("⏳ 正在读取目录...");
+        loadingView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        loadingView.setTextColor(Color.parseColor("#6B7280"));
+        loadingView.setPadding(dpToPx(16), dpToPx(32), dpToPx(16), dpToPx(32));
+        loadingView.setGravity(Gravity.CENTER);
+        folderListLayout.addView(loadingView);
+
+        new Thread(() -> {
+            OfflineHelperCore.DirListResult res = OfflineHelperCore.listDirectories(normalized, config, 10000);
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed() || pickerDialog == null || !pickerDialog.isShowing()) {
+                    return;
+                }
+                if (!normalized.equals(currentBrowsePath[0])) {
+                    return;
+                }
+
+                folderListLayout.removeAllViews();
+
+                if (!res.success) {
+                    TextView errorView = new TextView(ProcessTextActivity.this);
+                    String err = (res.message != null && !res.message.isEmpty()) ? res.message : ("HTTP " + res.code);
+                    errorView.setText("❌ 读取失败: " + err);
+                    errorView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                    errorView.setTextColor(Color.parseColor("#DC2626"));
+                    errorView.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(8));
+                    folderListLayout.addView(errorView);
+
+                    LinearLayout actionRow = new LinearLayout(ProcessTextActivity.this);
+                    actionRow.setOrientation(LinearLayout.HORIZONTAL);
+                    actionRow.setGravity(Gravity.CENTER_HORIZONTAL);
+                    actionRow.setPadding(0, dpToPx(4), 0, dpToPx(12));
+
+                    Button retryBtn = new Button(ProcessTextActivity.this);
+                    retryBtn.setText("🔄 重试");
+                    retryBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                    retryBtn.setTextColor(Color.parseColor("#2563EB"));
+                    retryBtn.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+                    GradientDrawable retryBg = new GradientDrawable();
+                    retryBg.setColor(Color.parseColor("#EFF6FF"));
+                    retryBg.setStroke(dpToPx(1), Color.parseColor("#BFDBFE"));
+                    retryBg.setCornerRadius(dpToPx(6));
+                    retryBtn.setBackground(retryBg);
+                    retryBtn.setOnClickListener(v -> loadDirectoryIntoPicker(normalized, config, currentBrowsePath, currentPathView, upBtn, folderListLayout));
+                    actionRow.addView(retryBtn);
+
+                    if (!"/".equals(normalized)) {
+                        Button fallbackRootBtn = new Button(ProcessTextActivity.this);
+                        fallbackRootBtn.setText("📂 退回根目录 (/)");
+                        fallbackRootBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                        fallbackRootBtn.setTextColor(Color.parseColor("#4B5563"));
+                        fallbackRootBtn.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+                        GradientDrawable fbBg = new GradientDrawable();
+                        fbBg.setColor(Color.parseColor("#F3F4F6"));
+                        fbBg.setStroke(dpToPx(1), Color.parseColor("#E5E7EB"));
+                        fbBg.setCornerRadius(dpToPx(6));
+                        fallbackRootBtn.setBackground(fbBg);
+                        LinearLayout.LayoutParams fbParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                        fbParams.leftMargin = dpToPx(8);
+                        fallbackRootBtn.setLayoutParams(fbParams);
+                        fallbackRootBtn.setOnClickListener(v -> loadDirectoryIntoPicker("/", config, currentBrowsePath, currentPathView, upBtn, folderListLayout));
+                        actionRow.addView(fallbackRootBtn);
+                    }
+
+                    folderListLayout.addView(actionRow);
+                    return;
+                }
+
+                if (res.directories == null || res.directories.isEmpty()) {
+                    TextView emptyView = new TextView(ProcessTextActivity.this);
+                    emptyView.setText("（当前目录下无子文件夹，可直接点击下方按钮选择此目录）");
+                    emptyView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                    emptyView.setTextColor(Color.parseColor("#6B7280"));
+                    emptyView.setPadding(dpToPx(16), dpToPx(24), dpToPx(16), dpToPx(24));
+                    emptyView.setGravity(Gravity.CENTER);
+                    folderListLayout.addView(emptyView);
+                    return;
+                }
+
+                for (String dirName : res.directories) {
+                    LinearLayout itemRow = new LinearLayout(ProcessTextActivity.this);
+                    itemRow.setOrientation(LinearLayout.HORIZONTAL);
+                    itemRow.setGravity(Gravity.CENTER_VERTICAL);
+                    itemRow.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+                    itemRow.setClickable(true);
+                    itemRow.setFocusable(true);
+
+                    GradientDrawable itemBg = new GradientDrawable();
+                    itemBg.setColor(Color.WHITE);
+                    itemBg.setStroke(dpToPx(1), Color.parseColor("#E5E7EB"));
+                    itemBg.setCornerRadius(dpToPx(6));
+                    itemRow.setBackground(itemBg);
+
+                    LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    itemParams.bottomMargin = dpToPx(6);
+                    itemRow.setLayoutParams(itemParams);
+
+                    TextView nameView = new TextView(ProcessTextActivity.this);
+                    nameView.setText("📁  " + dirName);
+                    nameView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                    nameView.setTextColor(Color.parseColor("#1F2937"));
+                    nameView.setSingleLine(true);
+                    nameView.setEllipsize(TextUtils.TruncateAt.END);
+                    LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                    nameView.setLayoutParams(nameParams);
+                    itemRow.addView(nameView);
+
+                    TextView arrowView = new TextView(ProcessTextActivity.this);
+                    arrowView.setText("›");
+                    arrowView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+                    arrowView.setTextColor(Color.parseColor("#9CA3AF"));
+                    arrowView.setPadding(dpToPx(4), 0, dpToPx(4), 0);
+                    itemRow.addView(arrowView);
+
+                    final String subPath = OfflineHelperCore.joinVirtualPath(normalized, dirName);
+                    itemRow.setOnClickListener(v -> {
+                        loadDirectoryIntoPicker(subPath, config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+                    });
+
+                    folderListLayout.addView(itemRow);
+                }
+            });
+        }).start();
     }
 
     private void saveUserConfig(OfflineHelperCore.OfflineConfig config) {
@@ -404,6 +862,9 @@ public class ProcessTextActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (pickerDialog != null && pickerDialog.isShowing()) {
+            pickerDialog.dismiss();
+        }
         if (currentDialog != null && currentDialog.isShowing()) {
             currentDialog.dismiss();
         }

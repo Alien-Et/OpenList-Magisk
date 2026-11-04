@@ -23,6 +23,22 @@
 - `intent.getDataString()`（直接点击的 URI）
 - `intent.getClipData()`（部分浏览器通过剪贴板 ClipData 传递的文本或 URI）
 
+## 交互式目录浏览与预设标签（Interactive Folder Picker & Preset Chips）
+
+离线确认半屏弹窗（`Offline Confirm Sheet`）内置了虚拟路径交互式浏览与快速切换能力：
+
+1. **预设路径快速选择（Preset Path Chips）**：
+   - 在路径输入框下方渲染横向滑动标签栏（`HorizontalScrollView`），预载 `offline.conf` 中配置的 `PRESET_PATHS`（默认 `/115/影视/` 与 `/115/`）。
+   - 用户单按标签即可将对应路径瞬间填入输入框，免去在移动设备端频繁手打长路径。
+   - 每次提交离线任务或从目录选择器确认路径后，新路径自动追加至用户私有配置 `user_offline.conf` 的预设列表最前端，实现最近使用路径的动态记忆。
+
+2. **交互式文件夹选择器（Interactive Folder Browser）**：
+   - 点击路径输入框右侧的“📁 选择目录”按钮，弹出独立的目录浏览底部弹窗。
+   - 弹窗通过后台线程异步请求 OpenList 原生目录接口 `POST /api/fs/list`（携带伴侣私有鉴权 Token，过滤仅展示文件夹对象 `is_dir = true`）。
+   - 支持逐级钻取进入子目录（`joinVirtualPath`）、点击“⬆️ 上级目录”返回父路径（`parentVirtualPath`）、点击“🏠 根目录 (/)”直达挂载根节点，以及“🔄 刷新”重新载入。
+   - 若用户初始配置路径不存在或网络异常导致读取失败，界面友好展示错误原因并提供“📂 退回根目录 (/)”与“🔄 重试”快捷按钮，便于用户从所有 OpenList 存储挂载点（如 `/115`、`/quark`、`/本地存储` 等）重新选择。
+   - 选定目标目录后点击“✅ 选择当前目录”，自动规范化路径格式并写回主弹窗输入框与预设标签栏。
+
 ## 容错与自愈机制
 
 1. **Token 后缀防御过滤**：

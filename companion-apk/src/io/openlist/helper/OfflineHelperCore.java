@@ -627,4 +627,351 @@ public final class OfflineHelperCore {
             }
         }
     }
+
+    /**
+     * Normalizes a virtual path for OpenList navigation and display.
+     * Null, empty or whitespace defaults to "/".
+     * Trims whitespace, converts backslashes to slashes, ensures leading slash,
+     * collapses consecutive slashes, and ensures trailing slash.
+     */
+    public static String normalizeVirtualPath(String path) {
+        if (path == null) {
+            return "/";
+        }
+        path = path.trim();
+        if (path.isEmpty()) {
+            return "/";
+        }
+        path = path.replace('\\', '/');
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        path = path.replaceAll("/+", "/");
+        if (!path.endsWith("/")) {
+            path = path + "/";
+        }
+        return path;
+    }
+
+    /**
+     * Returns the parent directory virtual path, ending with a trailing slash.
+     * Root "/" returns "/".
+     * E.g. "/115/影视/" -> "/115/", "/115/" -> "/".
+     */
+    public static String parentVirtualPath(String path) {
+        String normalized = normalizeVirtualPath(path);
+        if ("/".equals(normalized)) {
+            return "/";
+        }
+        String stripped = normalized.substring(0, normalized.length() - 1);
+        int lastSlash = stripped.lastIndexOf('/');
+        if (lastSlash < 0) {
+            return "/";
+        }
+        return stripped.substring(0, lastSlash + 1);
+    }
+
+    /**
+     * Joins parentPath and childDirName into a normalized directory path ending with a trailing slash.
+     * E.g. joinVirtualPath("/115/", "影视") -> "/115/影视/".
+     */
+    public static String joinVirtualPath(String parentPath, String childDirName) {
+        String parent = normalizeVirtualPath(parentPath);
+        if (childDirName == null || childDirName.trim().isEmpty()) {
+            return parent;
+        }
+        String combined = parent + childDirName.trim();
+        return normalizeVirtualPath(combined);
+    }
+
+    /**
+     * Builds request payload for OpenList /api/fs/list.
+     * Root path is "/", non-root paths have their trailing slash stripped.
+     */
+    public static String buildListDirectoryPayload(String path) {
+        String normalized = normalizeVirtualPath(path);
+        String apiPath = "/".equals(normalized) ? "/" : (normalized.endsWith("/") ? normalized.substring(0, normalized.length() - 1) : normalized);
+        return "{\"path\":\"" + escapeJson(apiPath) + "\",\"password\":\"\",\"page\":1,\"per_page\":0,\"refresh\":false}";
+    }
+
+    /**
+     * Result of listing a directory from OpenList daemon.
+     */
+    public static class DirListResult {
+        public final boolean success;
+        public final int code;
+        public final String message;
+        public final String currentPath;
+        public final List<String> directories;
+        public final String rawBody;
+
+        public DirListResult(boolean success, int code, String message, String currentPath, List<String> directories, String rawBody) {
+            this.success = success;
+            this.code = code;
+            this.message = message != null ? message : "";
+            this.currentPath = currentPath != null ? currentPath : "/";
+            this.directories = (directories != null) ? Collections.unmodifiableList(new ArrayList<>(directories)) : Collections.emptyList();
+            this.rawBody = rawBody != null ? rawBody : "";
+        }
+
+        public boolean isStorageError() {
+            if (success) return false;
+            String combined = ((message != null ? message : "") + " " + (rawBody != null ? rawBody : "")).toLowerCase(Locale.ROOT);
+            return combined.contains("storage") || combined.contains("not init") || combined.contains("disabled");
+        }
+
+        @Override
+        public String toString() {
+            return "DirListResult{success=" + success + ", code=" + code + ", currentPath='" + currentPath + "', dirs=" + directories.size() + "}";
+        }
+    }
+
+    /**
+     * Parses directory names from OpenList /api/fs/list response JSON.
+     * Extracts items with "is_dir": true from "content": [ ... ], decodes their "name",
+     * preserves appearance order, and deduplicates.
+     */
+    public static List<String> parseDirectoryNamesFromListJson(String jsonBody) {
+        if (jsonBody == null || jsonBody.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (Pattern.compile("\"content\"\\s*:\\s*null\\b").matcher(jsonBody).find()) {
+            return Collections.emptyList();
+        }
+
+        String searchScope = jsonBody;
+        Matcher contentMatcher = Pattern.compile("\"content\"\\s*:\\s*\\[").matcher(jsonBody);
+        if (contentMatcher.find()) {
+            int arrayStart = contentMatcher.end() - 1;
+            int depth = 0;
+            boolean inStr = false;
+            boolean escape = false;
+            int arrayEnd = -1;
+            for (int i = arrayStart; i < jsonBody.length(); i++) {
+                char c = jsonBody.charAt(i);
+                if (escape) {
+                    escape = false;
+                    continue;
+                }
+                if (c == '\\') {
+                    if (inStr) escape = true;
+                    continue;
+                }
+                if (c == '"') {
+                    inStr = !inStr;
+                    continue;
+                }
+                if (!inStr) {
+                    if (c == '[') depth++;
+                    else if (c == ']') {
+                        depth--;
+                        if (depth == 0) {
+                            arrayEnd = i;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (arrayEnd > arrayStart) {
+                searchScope = jsonBody.substring(arrayStart + 1, arrayEnd);
+            }
+        } else {
+            int firstBracket = jsonBody.indexOf('[');
+            if (firstBracket >= 0) {
+                int depth = 0;
+                boolean inStr = false;
+                boolean escape = false;
+                int arrayEnd = -1;
+                for (int i = firstBracket; i < jsonBody.length(); i++) {
+                    char c = jsonBody.charAt(i);
+                    if (escape) {
+                        escape = false;
+                        continue;
+                    }
+                    if (c == '\\') {
+                        if (inStr) escape = true;
+                        continue;
+                    }
+                    if (c == '"') {
+                        inStr = !inStr;
+                        continue;
+                    }
+                    if (!inStr) {
+                        if (c == '[') depth++;
+                        else if (c == ']') {
+                            depth--;
+                            if (depth == 0) {
+                                arrayEnd = i;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (arrayEnd > firstBracket) {
+                    searchScope = jsonBody.substring(firstBracket + 1, arrayEnd);
+                }
+            }
+        }
+
+        List<String> objectBlocks = new ArrayList<>();
+        int depth = 0;
+        int objStart = -1;
+        boolean inStr = false;
+        boolean escape = false;
+        for (int i = 0; i < searchScope.length(); i++) {
+            char c = searchScope.charAt(i);
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            if (c == '\\') {
+                if (inStr) escape = true;
+                continue;
+            }
+            if (c == '"') {
+                inStr = !inStr;
+                continue;
+            }
+            if (!inStr) {
+                if (c == '{') {
+                    if (depth == 0) {
+                        objStart = i;
+                    }
+                    depth++;
+                } else if (c == '}') {
+                    depth--;
+                    if (depth == 0 && objStart != -1) {
+                        objectBlocks.add(searchScope.substring(objStart, i + 1));
+                        objStart = -1;
+                    }
+                }
+            }
+        }
+
+        Pattern isDirPattern = Pattern.compile("\"is_dir\"\\s*:\\s*(?:true|\"true\")\\b", Pattern.CASE_INSENSITIVE);
+        Pattern namePattern = Pattern.compile("\"name\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"");
+
+        List<String> result = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (String block : objectBlocks) {
+            if (!isDirPattern.matcher(block).find()) {
+                continue;
+            }
+            Matcher nameMatcher = namePattern.matcher(block);
+            if (nameMatcher.find()) {
+                String unescaped = unescapeJson(nameMatcher.group(1));
+                if (seen.add(unescaped)) {
+                    result.add(unescaped);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Lists subdirectories for a given virtual path using OfflineConfig.
+     */
+    public static DirListResult listDirectories(String path, OfflineConfig config, int timeoutMs) {
+        String host = (config != null && config.host != null && !config.host.isEmpty()) ? config.host : "127.0.0.1";
+        int port = (config != null && config.port > 0) ? config.port : 5244;
+        String baseUrl = "http://" + host + ":" + port;
+        String token = (config != null) ? sanitizeToken(config.token) : "";
+        return listDirectories(baseUrl, token, path, timeoutMs);
+    }
+
+    /**
+     * Lists subdirectories for a given virtual path from OpenList daemon.
+     * Automatically attempts recovery via /api/admin/storage/load_all if storage is uninitialized.
+     */
+    public static DirListResult listDirectories(String baseUrl, String token, String path, int timeoutMs) {
+        String sanitizedToken = sanitizeToken(token);
+        String normalizedPath = normalizeVirtualPath(path);
+        DirListResult res = executeListDirectories(baseUrl, sanitizedToken, normalizedPath, timeoutMs);
+
+        // Auto-heal: if code != 200 and error indicates storage not init/disabled, reload storage and retry once
+        if (!res.success && res.isStorageError()) {
+            reloadAllStorage(baseUrl, sanitizedToken, timeoutMs);
+            try {
+                Thread.sleep(800);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            res = executeListDirectories(baseUrl, sanitizedToken, normalizedPath, timeoutMs);
+        }
+
+        return res;
+    }
+
+    private static DirListResult executeListDirectories(String baseUrl, String token, String normalizedPath, int timeoutMs) {
+        if (baseUrl == null || baseUrl.trim().isEmpty()) {
+            baseUrl = "http://127.0.0.1:5244";
+        }
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        String endpoint = baseUrl + "/api/fs/list";
+        String payload = buildListDirectoryPayload(normalizedPath);
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(endpoint);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(timeoutMs > 0 ? timeoutMs : 10000);
+            conn.setReadTimeout(timeoutMs > 0 ? timeoutMs : 10000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            String sanitizedToken = sanitizeToken(token);
+            if (!sanitizedToken.isEmpty()) {
+                conn.setRequestProperty("Authorization", sanitizedToken);
+            }
+
+            byte[] bodyBytes = payload.getBytes(StandardCharsets.UTF_8);
+            conn.setRequestProperty("Content-Length", String.valueOf(bodyBytes.length));
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(bodyBytes);
+                os.flush();
+            }
+
+            int httpCode = conn.getResponseCode();
+            InputStream rawStream = (httpCode >= 200 && httpCode < 400) ? conn.getInputStream() : conn.getErrorStream();
+            String responseBody = "";
+            if (rawStream != null) {
+                try (InputStream is = rawStream; ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                    byte[] buf = new byte[1024];
+                    int len;
+                    while ((len = is.read(buf)) != -1) {
+                        baos.write(buf, 0, len);
+                    }
+                    responseBody = baos.toString("UTF-8");
+                }
+            }
+
+            int jsonCode = -1;
+            String jsonMsg = "";
+
+            Matcher codeMatcher = Pattern.compile("\"code\"\\s*:\\s*(-?\\d+)").matcher(responseBody);
+            if (codeMatcher.find()) {
+                try {
+                    jsonCode = Integer.parseInt(codeMatcher.group(1));
+                } catch (NumberFormatException ignored) {}
+            }
+
+            Matcher msgMatcher = Pattern.compile("\"message\"\\s*:\\s*\"([^\"]*)\"").matcher(responseBody);
+            if (msgMatcher.find()) {
+                jsonMsg = unescapeJson(msgMatcher.group(1));
+            } else {
+                jsonMsg = "HTTP " + httpCode + (responseBody.isEmpty() ? "" : ": " + responseBody);
+            }
+
+            boolean success = (httpCode == 200) && (jsonCode == 200);
+            List<String> directories = success ? parseDirectoryNamesFromListJson(responseBody) : Collections.emptyList();
+            return new DirListResult(success, jsonCode >= 0 ? jsonCode : httpCode, jsonMsg, normalizedPath, directories, responseBody);
+        } catch (Exception e) {
+            return new DirListResult(false, -1, e.getClass().getSimpleName() + ": " + e.getMessage(), normalizedPath, Collections.emptyList(), "");
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
 }

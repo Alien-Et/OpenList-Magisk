@@ -42,6 +42,9 @@ public class OfflineHelperCoreTest {
         runTest("testApiResultIsStorageError", OfflineHelperCoreTest::testApiResultIsStorageError);
         runTest("testAutoHealStorageNotInit", OfflineHelperCoreTest::testAutoHealStorageNotInit);
         runTest("testManifestDefaultDisabledProcessTextActivity", OfflineHelperCoreTest::testManifestDefaultDisabledProcessTextActivity);
+        runTest("testVirtualPathHelpers", OfflineHelperCoreTest::testVirtualPathHelpers);
+        runTest("testParseDirectoryNamesFromListJson", OfflineHelperCoreTest::testParseDirectoryNamesFromListJson);
+        runTest("testListDirectoriesMockHttpAndAutoHeal", OfflineHelperCoreTest::testListDirectoriesMockHttpAndAutoHeal);
 
         System.out.println("=== Test Summary: " + testsPassed + "/" + testsRun + " passed ===");
         if (testsPassed != testsRun) {
@@ -529,5 +532,208 @@ public class OfflineHelperCoreTest {
                 "ProcessTextActivity must retain android.intent.action.SEND");
         assertTrue(activityBody.contains("android.intent.action.VIEW"),
                 "ProcessTextActivity must retain android.intent.action.VIEW");
+    }
+
+    private static void testVirtualPathHelpers() {
+        // 1. normalizeVirtualPath
+        assertEquals("/", OfflineHelperCore.normalizeVirtualPath(null), "Null path -> /");
+        assertEquals("/", OfflineHelperCore.normalizeVirtualPath(""), "Empty path -> /");
+        assertEquals("/", OfflineHelperCore.normalizeVirtualPath("   "), "Whitespace path -> /");
+        assertEquals("/", OfflineHelperCore.normalizeVirtualPath("/"), "Root / -> /");
+        assertEquals("/", OfflineHelperCore.normalizeVirtualPath("///"), "Multiple root slashes -> /");
+        assertEquals("/115/", OfflineHelperCore.normalizeVirtualPath("/115"), "No trailing slash -> /115/");
+        assertEquals("/115/", OfflineHelperCore.normalizeVirtualPath("/115/"), "With trailing slash -> /115/");
+        assertEquals("/115/影视/", OfflineHelperCore.normalizeVirtualPath("/115/影视"), "/115/影视 -> /115/影视/");
+        assertEquals("/115/影视/", OfflineHelperCore.normalizeVirtualPath("/115/影视/"), "/115/影视/ -> /115/影视/");
+        assertEquals("/115/动漫/", OfflineHelperCore.normalizeVirtualPath("115/动漫"), "Leading slash added");
+        assertEquals("/115/动漫/", OfflineHelperCore.normalizeVirtualPath("115\\动漫\\"), "Backslash replaced");
+        assertEquals("/115/影视/", OfflineHelperCore.normalizeVirtualPath("//115///影视//"), "Consecutive slashes collapsed");
+        assertEquals("/115/影视/", OfflineHelperCore.normalizeVirtualPath("   /115/影视   "), "Padded whitespace trimmed");
+
+        // 2. parentVirtualPath
+        assertEquals("/", OfflineHelperCore.parentVirtualPath("/"), "Parent of / -> /");
+        assertEquals("/", OfflineHelperCore.parentVirtualPath(null), "Parent of null -> /");
+        assertEquals("/", OfflineHelperCore.parentVirtualPath(""), "Parent of empty -> /");
+        assertEquals("/", OfflineHelperCore.parentVirtualPath("/115"), "Parent of /115 -> /");
+        assertEquals("/", OfflineHelperCore.parentVirtualPath("/115/"), "Parent of /115/ -> /");
+        assertEquals("/115/", OfflineHelperCore.parentVirtualPath("/115/影视"), "Parent of /115/影视 -> /115/");
+        assertEquals("/115/", OfflineHelperCore.parentVirtualPath("/115/影视/"), "Parent of /115/影视/ -> /115/");
+        assertEquals("/115/", OfflineHelperCore.parentVirtualPath("115/动漫"), "Parent of 115/动漫 -> /115/");
+        assertEquals("/115/影视/", OfflineHelperCore.parentVirtualPath("/115/影视/子目录/"), "Parent of multi-level -> /115/影视/");
+
+        // 3. joinVirtualPath
+        assertEquals("/115/影视/", OfflineHelperCore.joinVirtualPath("/115/", "影视"), "Join /115/ and 影视 -> /115/影视/");
+        assertEquals("/115/影视/", OfflineHelperCore.joinVirtualPath("/115", "影视"), "Join /115 and 影视 -> /115/影视/");
+        assertEquals("/115/", OfflineHelperCore.joinVirtualPath("/", "115"), "Join / and 115 -> /115/");
+        assertEquals("/115/影视/", OfflineHelperCore.joinVirtualPath("/115/", "/影视/"), "Join handles internal slashes");
+        assertEquals("/115/影视/科幻/", OfflineHelperCore.joinVirtualPath("/115/影视/", "科幻"), "Join subfolder -> /115/影视/科幻/");
+        assertEquals("/115/", OfflineHelperCore.joinVirtualPath("/115/", null), "Join with null child preserves parent");
+        assertEquals("/115/", OfflineHelperCore.joinVirtualPath("/115/", "   "), "Join with empty child preserves parent");
+        assertEquals("/115/", OfflineHelperCore.joinVirtualPath(null, "115"), "Join with null parent uses root");
+
+        // 4. buildListDirectoryPayload
+        assertEquals("{\"path\":\"/\",\"password\":\"\",\"page\":1,\"per_page\":0,\"refresh\":false}",
+                OfflineHelperCore.buildListDirectoryPayload("/"), "Payload for root /");
+        assertEquals("{\"path\":\"/115/影视\",\"password\":\"\",\"page\":1,\"per_page\":0,\"refresh\":false}",
+                OfflineHelperCore.buildListDirectoryPayload("/115/影视/"), "Payload for /115/影视/ strips trailing slash");
+        assertEquals("{\"path\":\"/115\",\"password\":\"\",\"page\":1,\"per_page\":0,\"refresh\":false}",
+                OfflineHelperCore.buildListDirectoryPayload("/115"), "Payload for /115");
+        assertTrue(OfflineHelperCore.buildListDirectoryPayload("/115/特殊\"名/").contains("\\\""),
+                "Payload properly escapes quotes in path");
+    }
+
+    private static void testParseDirectoryNamesFromListJson() {
+        String json = "{\n" +
+                "  \"code\": 200,\n" +
+                "  \"message\": \"success\",\n" +
+                "  \"data\": {\n" +
+                "    \"content\": [\n" +
+                "      {\"name\": \"云下载\", \"size\": 0, \"is_dir\": true, \"modified\": \"2024-01-01T00:00:00Z\"},\n" +
+                "      {\"name\": \"影视\", \"size\": 0, \"is_dir\": true, \"modified\": \"2024-01-01T00:00:00Z\"},\n" +
+                "      {\"name\": \"movie.mkv\", \"size\": 1048576, \"is_dir\": false, \"modified\": \"2024-01-01T00:00:00Z\"},\n" +
+                "      {\"name\": \"Special \\\"Folder\\\" \\\\ Path\", \"size\": 0, \"is_dir\": true, \"modified\": \"2024-01-01T00:00:00Z\"},\n" +
+                "      {\"name\": \"README.txt\", \"size\": 256, \"is_dir\": false, \"modified\": \"2024-01-01T00:00:00Z\"},\n" +
+                "      {\"name\": \"云下载\", \"size\": 0, \"is_dir\": true, \"modified\": \"2024-01-01T00:00:00Z\"}\n" +
+                "    ],\n" +
+                "    \"total\": 6,\n" +
+                "    \"readme\": \"\",\n" +
+                "    \"write\": true,\n" +
+                "    \"provider\": \"115 Open\"\n" +
+                "  }\n" +
+                "}";
+
+        List<String> dirs = OfflineHelperCore.parseDirectoryNamesFromListJson(json);
+        assertEquals(3, dirs.size(), "Should extract 3 unique directories");
+        assertEquals("云下载", dirs.get(0), "Dir 0");
+        assertEquals("影视", dirs.get(1), "Dir 1");
+        assertEquals("Special \"Folder\" \\ Path", dirs.get(2), "Dir 2 with unescaped quotes and slashes");
+
+        // Unicode escaped name
+        String unicodeJson = "{\"code\":200,\"data\":{\"content\":[{\"name\":\"\\u4e91\\u4e0b\\u8f7d\",\"is_dir\":true}]}}";
+        List<String> unicodeDirs = OfflineHelperCore.parseDirectoryNamesFromListJson(unicodeJson);
+        assertEquals(1, unicodeDirs.size(), "Unicode dir extracted");
+        assertEquals("云下载", unicodeDirs.get(0), "Unicode decoded correctly");
+
+        // Reversed key order and nested objects
+        String reversedJson = "{\"code\":200,\"data\":{\"content\":[{\"is_dir\":true,\"extra\":{\"a\":1},\"name\":\"反序目录\"}]}}";
+        List<String> reversedDirs = OfflineHelperCore.parseDirectoryNamesFromListJson(reversedJson);
+        assertEquals(1, reversedDirs.size(), "Reversed key order with nested object");
+        assertEquals("反序目录", reversedDirs.get(0), "Extracted name with reversed keys");
+
+        // Empty content or null content
+        assertEquals(0, OfflineHelperCore.parseDirectoryNamesFromListJson(null).size(), "Null json -> empty");
+        assertEquals(0, OfflineHelperCore.parseDirectoryNamesFromListJson("").size(), "Empty json -> empty");
+        assertEquals(0, OfflineHelperCore.parseDirectoryNamesFromListJson("{\"code\":200,\"data\":{\"content\":null}}").size(), "Null content -> empty");
+        assertEquals(0, OfflineHelperCore.parseDirectoryNamesFromListJson("{\"code\":200,\"data\":{\"content\":[]}}").size(), "Empty content -> empty");
+        assertEquals(0, OfflineHelperCore.parseDirectoryNamesFromListJson("{\"code\":200,\"data\":null}").size(), "Null data -> empty");
+
+        // DirListResult isStorageError unit verification
+        OfflineHelperCore.DirListResult successResult = new OfflineHelperCore.DirListResult(true, 200, "storage not init", "/", Collections.emptyList(), "");
+        assertTrue(!successResult.isStorageError(), "Success DirListResult is never a storage error");
+
+        OfflineHelperCore.DirListResult storageInMsgResult = new OfflineHelperCore.DirListResult(false, 500, "storage not init", "/", Collections.emptyList(), "");
+        assertTrue(storageInMsgResult.isStorageError(), "Storage not init in message is detected");
+
+        OfflineHelperCore.DirListResult disabledInBodyResult = new OfflineHelperCore.DirListResult(false, 500, "fail", "/", Collections.emptyList(), "{\"error\":\"storage disabled\"}");
+        assertTrue(disabledInBodyResult.isStorageError(), "Storage disabled in body is detected");
+
+        OfflineHelperCore.DirListResult unauthResult = new OfflineHelperCore.DirListResult(false, 401, "unauthorized", "/", Collections.emptyList(), "{\"code\":401}");
+        assertTrue(!unauthResult.isStorageError(), "Unauthorized is not a storage error");
+    }
+
+    private static void testListDirectoriesMockHttpAndAutoHeal() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        int testPort = server.getAddress().getPort();
+
+        AtomicInteger listCalls = new AtomicInteger(0);
+        AtomicInteger loadAllCalls = new AtomicInteger(0);
+        AtomicReference<String> listAuth = new AtomicReference<>("");
+        AtomicReference<String> listBody = new AtomicReference<>("");
+
+        server.createContext("/api/fs/list", exchange -> {
+            int callNum = listCalls.incrementAndGet();
+            listAuth.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            try (InputStream is = exchange.getRequestBody();
+                 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                byte[] buf = new byte[1024];
+                int len;
+                while ((len = is.read(buf)) != -1) {
+                    baos.write(buf, 0, len);
+                }
+                listBody.set(baos.toString(StandardCharsets.UTF_8.name()));
+            }
+
+            byte[] respBytes;
+            if (callNum == 1) {
+                // First call: fail with storage not init
+                respBytes = "{\"code\":500,\"message\":\"storage not init: dial tcp lookup 115 error\",\"data\":null}".getBytes(StandardCharsets.UTF_8);
+            } else {
+                // Subsequent calls: success with 2 folders and 1 file
+                respBytes = ("{\n" +
+                        "  \"code\": 200,\n" +
+                        "  \"message\": \"success\",\n" +
+                        "  \"data\": {\n" +
+                        "    \"content\": [\n" +
+                        "      {\"name\": \"影视\", \"is_dir\": true},\n" +
+                        "      {\"name\": \"动漫\", \"is_dir\": true},\n" +
+                        "      {\"name\": \"notes.txt\", \"is_dir\": false}\n" +
+                        "    ]\n" +
+                        "  }\n" +
+                        "}").getBytes(StandardCharsets.UTF_8);
+            }
+
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(200, respBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(respBytes);
+                os.flush();
+            }
+        });
+
+        server.createContext("/api/admin/storage/load_all", exchange -> {
+            loadAllCalls.incrementAndGet();
+            byte[] respBytes = "{\"code\":200,\"message\":\"success\",\"data\":null}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(200, respBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(respBytes);
+                os.flush();
+            }
+        });
+
+        server.start();
+
+        try {
+            String baseUrl = "http://127.0.0.1:" + testPort;
+            String token = "openlist-sample-token-123456789012345678901234567890string";
+
+            // 1. Auto-heal test on first listDirectories call (call 1 fails, triggers load_all, call 2 succeeds)
+            OfflineHelperCore.DirListResult res = OfflineHelperCore.listDirectories(baseUrl, token, "/115", 5000);
+
+            assertTrue(res.success, "Auto-healed listDirectories must succeed");
+            assertEquals(200, res.code, "Code 200");
+            assertEquals("success", res.message, "Message success");
+            assertEquals("/115/", res.currentPath, "Current path normalized to /115/");
+            assertEquals(2, res.directories.size(), "Should have 2 directories");
+            assertEquals("影视", res.directories.get(0), "First dir is 影视");
+            assertEquals("动漫", res.directories.get(1), "Second dir is 动漫");
+            assertEquals(2, listCalls.get(), "list called twice due to auto-heal");
+            assertEquals(1, loadAllCalls.get(), "load_all called once");
+            // Check that token was sanitized before sending
+            assertEquals("openlist-sample-token-123456789012345678901234567890", listAuth.get(), "Sanitized token in Authorization");
+            assertTrue(listBody.get().contains("\"path\":\"/115\""), "Request payload path is /115 without trailing slash");
+
+            // 2. Config-based listDirectories call (now succeeds on first attempt)
+            OfflineHelperCore.OfflineConfig config = new OfflineHelperCore.OfflineConfig();
+            config.host = "127.0.0.1";
+            config.port = testPort;
+            config.token = "config-token-123";
+            OfflineHelperCore.DirListResult configRes = OfflineHelperCore.listDirectories("/", config, 5000);
+            assertTrue(configRes.success, "Config-based listDirectories succeeds");
+            assertEquals("/", configRes.currentPath, "Root path is /");
+            assertEquals(2, configRes.directories.size(), "Root dirs count");
+        } finally {
+            server.stop(0);
+        }
     }
 }
