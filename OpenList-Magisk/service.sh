@@ -247,6 +247,79 @@ extract_openlist_token() {
     echo "$token"
 }
 
+patch_openlist_binary_sqlite_dsn() {
+    local bin_file="${1:-$OPENLIST_BINARY}"
+    [ ! -f "$bin_file" ] && return 0
+    [ ! -w "$bin_file" ] && return 0
+
+    if grep -a -qF '%s?_journal=WAL&_vacuum=incremental' "$bin_file" 2>/dev/null; then
+        if LC_ALL=C sed -b -i 's|%s?_journal=WAL&_vacuum=incremental|%s?_pragma=busy_timeout(10000)\&_v=1|g' "$bin_file" 2>/dev/null || \
+           LC_ALL=C sed -i 's|%s?_journal=WAL&_vacuum=incremental|%s?_pragma=busy_timeout(10000)\&_v=1|g' "$bin_file" 2>/dev/null; then
+            chmod 755 "$bin_file" 2>/dev/null || true
+            restorecon "$bin_file" 2>/dev/null || chcon u:object_r:system_file:s0 "$bin_file" 2>/dev/null || true
+            log "已修补 OpenList 二进制 SQLite 连接参数 (busy_timeout=10000ms)"
+        fi
+    fi
+    return 0
+}
+
+ensure_sqlite_wal_and_clean_locks() {
+    local db_file="${1:-$DATA_DIR/data.db}"
+    [ ! -f "$db_file" ] && return 0
+
+    if [ -n "$OPENLIST_BINARY" ] && pgrep -f "$OPENLIST_BINARY server" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [ -f "${db_file}-journal" ] && [ ! -s "${db_file}-journal" ]; then
+        rm -f "${db_file}-journal" 2>/dev/null || true
+    fi
+
+    local db_size
+    db_size=$(wc -c < "$db_file" 2>/dev/null | tr -d ' \n\r')
+    if [ -z "$db_size" ] || [ "$db_size" -lt 100 ]; then
+        return 0
+    fi
+
+    if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$db_file" "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=10000;" >/dev/null 2>&1 || true
+    fi
+
+    local magic
+    magic=$(head -c 15 "$db_file" 2>/dev/null | tr -d '\0' || true)
+    if [ "$magic" = "SQLite format 3" ] && [ ! -s "${db_file}-journal" ]; then
+        local hex_ver
+        hex_ver=$(od -An -tx1 -j 18 -N 2 "$db_file" 2>/dev/null | tr -d ' \n\r')
+        if [ "$hex_ver" = "0101" ]; then
+            printf '\002\002' | dd of="$db_file" bs=1 seek=18 count=2 conv=notrunc 2>/dev/null || true
+            log "已为 SQLite 数据库启用持久化 WAL 模式: $db_file"
+        fi
+    fi
+    return 0
+}
+
+optimize_openlist_config() {
+    local cfg_file="${1:-$DATA_DIR/config.json}"
+    [ ! -f "$cfg_file" ] && return 0
+    [ ! -w "$cfg_file" ] && return 0
+
+    local updated=0
+    if grep -q '"max_size"[[:space:]]*:[[:space:]]*50' "$cfg_file" 2>/dev/null || \
+       grep -q '"max_backups"[[:space:]]*:[[:space:]]*30' "$cfg_file" 2>/dev/null || \
+       sed -n '/"filter"[[:space:]]*:[[:space:]]*{/,/}/p' "$cfg_file" 2>/dev/null | grep -q '"enable"[[:space:]]*:[[:space:]]*false'; then
+        updated=1
+    fi
+
+    sed -i '/"filter"[[:space:]]*:[[:space:]]*{/,/}/{s/"enable"[[:space:]]*:[[:space:]]*false/"enable": true/;}' "$cfg_file" 2>/dev/null || true
+    sed -i 's/"max_size"[[:space:]]*:[[:space:]]*50/"max_size": 10/g' "$cfg_file" 2>/dev/null || true
+    sed -i 's/"max_backups"[[:space:]]*:[[:space:]]*30/"max_backups": 3/g' "$cfg_file" 2>/dev/null || true
+
+    if [ "$updated" -eq 1 ]; then
+        log "已优化 OpenList 日志配置 (filter.enable=true, max_size=10MB, max_backups=3)"
+    fi
+    return 0
+}
+
 set_companion_menu_enabled() {
     local enabled="${1:-1}"
     if command -v pm >/dev/null 2>&1; then
@@ -503,6 +576,11 @@ main() {
     if [ $ELAPSED -ge $MAX_WAIT ]; then
         log "警告: 系统启动超时，继续尝试启动 openlist"
     fi
+
+    # 启动前修补 SQLite 连接超时与 WAL 持久化头，并调优日志轮转
+    patch_openlist_binary_sqlite_dsn "$OPENLIST_BINARY"
+    ensure_sqlite_wal_and_clean_locks "$DATA_DIR/data.db"
+    optimize_openlist_config "$DATA_DIR/config.json"
 
     log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
     $OPENLIST_BINARY server --data "$DATA_DIR" </dev/null >/dev/null 2>&1 &

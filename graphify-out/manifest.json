@@ -6,21 +6,21 @@
     "semantic_hash": "edfc1cdeb53e2140f01ef16f4bb1c032"
   },
   "OpenList-Magisk/action.sh": {
-    "mtime": 1793618065.3438005,
-    "seen": 1793621461.7039006,
-    "ast_hash": "9bde0d6d1a1a3b1ed2c570e95549f662",
-    "semantic_hash": "9bde0d6d1a1a3b1ed2c570e95549f662"
+    "mtime": 1793633906.702084,
+    "seen": 1793634112.1468573,
+    "ast_hash": "14971773ab147cac18da3656046ef175",
+    "semantic_hash": ""
   },
   "OpenList-Magisk/customize.sh": {
-    "mtime": 1793619309.7583113,
-    "seen": 1793621461.7039027,
-    "ast_hash": "3e91f87a8f7663aa638615303af676b8",
-    "semantic_hash": "3e91f87a8f7663aa638615303af676b8"
+    "mtime": 1793633906.7163913,
+    "seen": 1793634112.14686,
+    "ast_hash": "7e031ee96c99fc7033522b64e9c257ee",
+    "semantic_hash": ""
   },
   "OpenList-Magisk/service.sh": {
-    "mtime": 1793623801.8901799,
-    "seen": 1793624009.4478133,
-    "ast_hash": "263c9cd9c69794b6e4e3b54be072a90c",
+    "mtime": 1793800971.2674618,
+    "seen": 1793801195.3776522,
+    "ast_hash": "47a72ff602e253ae396e37848a8bf074",
     "semantic_hash": ""
   },
   "OpenList-Magisk/uninstall-user.sh": {
@@ -30,39 +30,39 @@
     "semantic_hash": "b79f6de1a9cc67ab1d630d235fc0d885"
   },
   "OpenList-Magisk/uninstall.sh": {
-    "mtime": 1793620519.667176,
-    "seen": 1793621461.703906,
-    "ast_hash": "50ca1ceed8b35d3e348369af46d9e075",
-    "semantic_hash": "50ca1ceed8b35d3e348369af46d9e075"
+    "mtime": 1793633906.724452,
+    "seen": 1793634112.1468647,
+    "ast_hash": "960f765df7287b776140acbd57401dfe",
+    "semantic_hash": ""
   },
   "companion-apk/build-apk.sh": {
-    "mtime": 1793619781.7956338,
-    "seen": 1793621461.703907,
+    "mtime": 1793624546.37993,
+    "seen": 1793624547.2261853,
     "ast_hash": "7a93f46f7faa7c26e1533d8ebc84e840",
     "semantic_hash": "7a93f46f7faa7c26e1533d8ebc84e840"
   },
   "companion-apk/src/io/openlist/helper/OfflineHelperCore.java": {
-    "mtime": 1793623881.7014573,
-    "seen": 1793624009.4478192,
-    "ast_hash": "f16a31346c44faacc4de165747061c20",
+    "mtime": 1793787138.7109306,
+    "seen": 1793787507.962427,
+    "ast_hash": "4462f0ff75b029c67f8e61da735774cc",
     "semantic_hash": ""
   },
   "companion-apk/src/io/openlist/helper/ProcessTextActivity.java": {
-    "mtime": 1793623923.9740324,
-    "seen": 1793624009.4478202,
-    "ast_hash": "060f01af8596748edb6ab0d5f8ce9978",
+    "mtime": 1793787921.985161,
+    "seen": 1793787948.7095542,
+    "ast_hash": "d916a67ae7fd18603607de79bb079608",
     "semantic_hash": ""
   },
   "companion-apk/test/io/openlist/helper/OfflineHelperCoreTest.java": {
-    "mtime": 1793623907.1351624,
-    "seen": 1793624009.4478216,
-    "ast_hash": "808bb1e6d910b962f228424803974534",
+    "mtime": 1793787186.782627,
+    "seen": 1793787507.9624314,
+    "ast_hash": "dac6d80093205ba332a9d18d061d4d84",
     "semantic_hash": ""
   },
   "tests/test_module_scripts.sh": {
-    "mtime": 1793623815.6858487,
-    "seen": 1793624009.4478228,
-    "ast_hash": "e5a2dd1379ccecb6112587c93dfe916a",
+    "mtime": 1793801040.3888073,
+    "seen": 1793801195.3776627,
+    "ast_hash": "87412dd58c41ff1cb45f387b6647646e",
     "semantic_hash": ""
   },
   "update.json": {
@@ -72,16 +72,16 @@
     "semantic_hash": "8061731d3ae9a54abab800e57a91e8a2"
   },
   ".github/workflows/1.yml": {
-    "mtime": 1793619341.7322211,
-    "seen": 1793621461.7039125,
+    "mtime": 1793624546.3465967,
+    "seen": 1793624547.2261684,
     "ast_hash": "3569ed110907a990b4891b5c49e53bda",
     "semantic_hash": "3569ed110907a990b4891b5c49e53bda"
   },
   "GLOSSARY.md": {
-    "mtime": 1793618668.915599,
-    "seen": 1793621461.7039132,
-    "ast_hash": "080d7c9b8d68c538a889dd87a4629373",
-    "semantic_hash": "080d7c9b8d68c538a889dd87a4629373"
+    "mtime": 1793799362.7868078,
+    "seen": 1793799866.485589,
+    "ast_hash": "54f822532f29963488c97d058a0fb1e0",
+    "semantic_hash": ""
   },
   "OpenList-Magisk/CHANGELOG.md": {
     "mtime": 1793618065.3429668,
@@ -90,21 +90,21 @@
     "semantic_hash": "02ced277f8fa78af56f194e7f6285e2c"
   },
   "OpenList-Magisk/README.md": {
-    "mtime": 1793623945.077926,
-    "seen": 1793624009.447829,
-    "ast_hash": "d56a500618302213ca85f350541d7193",
+    "mtime": 1793801118.8391218,
+    "seen": 1793801195.3776693,
+    "ast_hash": "66ba3ca0ea724d7dde535b868575d28b",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793623934.3037035,
-    "seen": 1793624009.44783,
-    "ast_hash": "3cdbf5c4db7e85272132f1b36e3b7e9a",
+    "mtime": 1793801094.6326456,
+    "seen": 1793801195.3776703,
+    "ast_hash": "563b738eb656f6a0ca17ceb9fcf7ffae",
     "semantic_hash": ""
   },
   "docs/adr/0001-companion-apk-process-text-offline-download.md": {
-    "mtime": 1793623964.4262674,
-    "seen": 1793624009.4478312,
-    "ast_hash": "7223b144537fb377ca54109141bc7e29",
+    "mtime": 1793787880.638652,
+    "seen": 1793787948.7095726,
+    "ast_hash": "f094ac5d2f3f9e872b05fb459df07309",
     "semantic_hash": ""
   },
   "install-interface.jpg": {
@@ -126,9 +126,39 @@
     "semantic_hash": "ab48163775d7f814a134ad37adb5dcf3"
   },
   "CLAUDE.md": {
-    "mtime": 1793621506.761672,
-    "seen": 1793621550.7987356,
+    "mtime": 1793624546.3465967,
+    "seen": 1793624547.2261922,
     "ast_hash": "67d88e9d0760c3ba54c75dfd9551c1c5",
+    "semantic_hash": ""
+  },
+  "docs/plans/companion-menu-visibility-plan.md": {
+    "mtime": 1793633557.0163662,
+    "seen": 1793634112.1468818,
+    "ast_hash": "8963c7847d4c4d77c506bd014a701e09",
+    "semantic_hash": ""
+  },
+  "docs/plans/folder-picker-confirm-sheet-plan.md": {
+    "mtime": 1793780592.5808575,
+    "seen": 1793781320.9866438,
+    "ast_hash": "dcd1786c7a43602dad3e8c6ad1e9b7fe",
+    "semantic_hash": ""
+  },
+  "docs/plans/offline-cache-refresh-plan.md": {
+    "mtime": 1793787027.5223606,
+    "seen": 1793787507.9624536,
+    "ast_hash": "e83915f4d05575f701ba8584987eb5bc",
+    "semantic_hash": ""
+  },
+  "docs/adr/0002-sqlite-wal-and-busy-timeout-patch.md": {
+    "mtime": 1793801131.8927076,
+    "seen": 1793801195.3776724,
+    "ast_hash": "f4858a8e2499f71fd3d24e803a110260",
+    "semantic_hash": ""
+  },
+  "docs/plans/sqlite-wal-self-healing-plan.md": {
+    "mtime": 1793801151.2897134,
+    "seen": 1793801195.3776772,
+    "ast_hash": "48c3f9ba8c28d5fde43958aa3bc818db",
     "semantic_hash": ""
   }
 }

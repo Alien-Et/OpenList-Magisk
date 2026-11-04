@@ -8,8 +8,9 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 ## 功能亮点
 
 - **多框架支持**：同时兼容 Magisk、KernelSU 和 APatch
-- **浏览器划词与磁力链接 115 离线下载（OpenListHelper 伴侣应用）**：原生接入系统划词菜单与 Magnet 协议关联，支持划选纯文本、直接点击超链接或长按分享链接一键唤起半屏弹窗，提供交互式目录选择器与预设路径标签快速选择，一键提交至本地 OpenList 115 离线下载
+- **浏览器划词与磁力链接 115 离线下载（OpenListHelper 伴侣应用）**：原生接入系统划词菜单与 Magnet 协议关联，支持划选纯文本、直接点击超链接或长按分享链接一键唤起半屏弹窗，提供交互式目录选择器与预设路径标签快速选择，支持提交后自动双阶段刷新目标目录缓存与选择器强制刷新，一键提交至本地 OpenList 115 离线下载
 - **配置与 Token 自动同步及存储自动重连**：服务启动自动从数据库提取 OpenList API Token 并剥离类型后缀，网络就绪后自动重连 115 等云存储，零手动配置
+- **SQLite 并发锁自愈与日志调优**：服务启动时自动持久化 SQLite WAL 模式（`0x02 0x02`）并原位注入 `busy_timeout(10000)` 10 秒锁等待补丁，彻底消除 WebDAV（如 NeoPlayer）高频并发 `PROPFIND` 访问下的 `SQLITE_BUSY (5)` 死锁与挂起；自动启用内置日志过滤并收紧轮转阈值（10MB/3份），防止磁盘胀满
 - **灵活安装选项**：支持三种安装位置
   - data/adb/openlist
   - 模块目录/bin
@@ -104,9 +105,9 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 #### 交互流程与离线投递
 1. **唤起半屏弹窗**：通过上述任意一种方式触发后，系统底部将弹出离线确认半屏弹窗（预览磁力与文件特征）。
 2. **确认目标路径**：
-   - **交互式文件夹选择器**：点击“📁 选择目录”按钮唤起目录浏览器，通过 OpenList 原生接口（`POST /api/fs/list`）实时拉取并展示文件夹列表，支持逐级钻取子目录、返回上级目录、退回根目录与一键刷新，直观选定目标落盘文件夹。
+   - **交互式文件夹选择器**：点击“📁 选择目录”按钮唤起目录浏览器，通过 OpenList 原生接口（`POST /api/fs/list`）拉取并展示文件夹列表，支持逐级钻取子目录、返回上级目录与退回根目录；点击“🔄 刷新”或“🔄 重试”时传递 `"refresh": true` 强制穿透 OpenList 内存缓存更新最新目录。
    - **预设路径快速选择**：点击输入框下方的横向预设标签（如 `/115/影视/`、`/115/` 或历史记录）瞬间填入，同时支持自由手动编辑。
-3. **一键投递执行**：点击“立即离线”，伴侣应用将调用本地 OpenList（`http://127.0.0.1:5244/api/fs/add_offline_download`），通过 `115 Open` 驱动投递至云端离线下载，并通过 Toast 反馈提交状态；新路径将自动记忆至最近预设列表供下次快速使用。
+3. **一键投递执行**：点击“立即离线”，伴侣应用将调用本地 OpenList（`http://127.0.0.1:5244/api/fs/add_offline_download`），通过 `115 Open` 驱动投递至云端离线下载；任务添加成功后，伴侣应用会自动执行即时与 1.5 秒延迟双阶段目标目录缓存刷新（`POST /api/fs/list` 携带 `"refresh": true`），确保云端秒传与离线完成文件在 OpenList Web UI 与 WebDAV 列表中无需手动刷新即可立即可见；新路径将自动记忆至最近预设列表供下次快速使用。
 
 #### 离线配置文件（`offline.conf`）与开机自动恢复
 配置文件位于 OpenList 数据目录：`$DATA_DIR/offline.conf`（如 `/data/adb/openlist/offline.conf`）。
@@ -129,6 +130,15 @@ DELETE_POLICY=delete_on_upload_succeed  # 下载成功后的清理策略
 PRESET_PATHS=/115/影视/,/115/            # 半屏弹窗预设路径快速选择列表（逗号分隔）
 ```
 升级模块与服务重启会自动保留用户对 `PATH`、`DELETE_POLICY` 和 `PRESET_PATHS` 的自定义修改。
+
+### SQLite 并发锁自愈与日志调优（SQLite WAL & Concurrency Self-Healing）
+
+OpenList 原生 Go SQLite 驱动（`modernc.org/sqlite`）在 Android 下默认未识别驱动参数从而回退至传统回滚模式（`DELETE`）且默认 `busy_timeout` 为 0。当 WebDAV 播放器（如 NeoPlayer、Infuse、live.alist.mpv 等）高频并发发起多级目录探测与属性检索（`PROPFIND`）时，事务锁竞争极易触发 `database is locked (5) (SQLITE_BUSY)` 与嵌套事务报错，导致 OpenList 守护服务无响应甚至挂起。
+
+为彻底消除锁竞争并控制日志占用，模块启动脚本（`service.sh`）在后台服务拉起前自动执行全套自愈加固：
+- **持久化 WAL 模式强固**：开机自动校验 `data.db` 头部，将格式版本强固为 `0x02 0x02`（Write-Ahead Logging 读写分离模式），使底层驱动天然以 WAL 模式打开数据库；服务启动前主动清理异常关机残留的孤立回滚锁（`data.db-journal`）。
+- **原位 35 字节 DSN 补丁**：自动扫描二进制文件，将 `%s?_journal=WAL&_vacuum=incremental` 原位替换为严格等长的 `%s?_pragma=busy_timeout(10000)&_v=1`，为连接池赋予 10 秒写锁重试等待窗口，彻底根治并发峰值锁冲突。
+- **WebDAV 日志过滤与紧凑轮转**：自动在 `$DATA_DIR/config.json` 中激活请求日志过滤（屏蔽高频 `/ping`、`HEAD`、`/dav/ PROPFIND` 心跳与目录扫描输出），并将日志上限压缩为 10MB、最多保留 3 份归档，避免长期运行刷爆手机存储空间。详细设计参见 [ADR 0002](docs/adr/0002-sqlite-wal-and-busy-timeout-patch.md)。
 
 ### 数据存储
 - 默认数据目录：`/data/adb/openlist/`
@@ -153,6 +163,10 @@ PRESET_PATHS=/115/影视/,/115/            # 半屏弹窗预设路径快速选�
    - 检查二进制文件权限
    - 确认数据目录可写
    - 查看详细日志
+
+4. **WebDAV 播放器多并发闪退或提示 database is locked**
+   - 模块内置 WAL 读写分离与 10 秒锁等待自愈补丁，重启模块服务（或通过动作按钮重新触发 `service.sh`）即可自动完成二进制补丁与 WAL 模式校准。
+   - 确认数据目录下 `data.db-wal` 正常生成，此为正常 WAL 日志文件，无需手动删除。
 
 ### 手动操作
 - 停止服务：`su -c pkill -f openlist`
