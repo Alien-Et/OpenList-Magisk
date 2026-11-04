@@ -35,7 +35,8 @@
 2. **交互式文件夹选择器（Interactive Folder Browser）**：
    - 点击路径输入框右侧的“📁 选择目录”按钮，弹出独立的目录浏览底部弹窗。
    - 弹窗通过后台线程异步请求 OpenList 原生目录接口 `POST /api/fs/list`（携带伴侣私有鉴权 Token，过滤仅展示文件夹对象 `is_dir = true`）。
-   - 支持逐级钻取进入子目录（`joinVirtualPath`）、点击“⬆️ 上级目录”返回父路径（`parentVirtualPath`）、点击“🏠 根目录 (/)”直达挂载根节点，以及“🔄 刷新”重新载入。
+   - 常规浏览导航（初始载入、子目录钻取 `joinVirtualPath`、返回上级 `parentVirtualPath`、直达根目录）使用 `"refresh": false` 以保持平滑快速的本地缓存体验。
+   - 点击“🔄 刷新”或错误提示下的“🔄 重试”时显式向 `POST /api/fs/list` 传递 `"refresh": true`，强制穿透 OpenList 内存缓存向底层存储拉取最新实时文件夹列表。
    - 若用户初始配置路径不存在或网络异常导致读取失败，界面友好展示错误原因并提供“📂 退回根目录 (/)”与“🔄 重试”快捷按钮，便于用户从所有 OpenList 存储挂载点（如 `/115`、`/quark`、`/本地存储` 等）重新选择。
    - 选定目标目录后点击“✅ 选择当前目录”，自动规范化路径格式并写回主弹窗输入框与预设标签栏。
 
@@ -50,6 +51,11 @@
    - 伴侣应用的 `ProcessTextActivity` 在 `AndroidManifest.xml` 中默认声明 `android:enabled="false"`，确保首次安装未启动服务或启动失败时，系统划词菜单、分享菜单与磁力链接拦截入口默认隐藏。
    - 当 `service.sh` 确认 OpenList Daemon 启动成功（且模块未被禁用）时，通过 `pm enable io.openlist.helper/io.openlist.helper.ProcessTextActivity` 动态暴露全部触发入口。
    - 当用户在 Root 管理器中点击“操作”（`action.sh`）停止服务、关闭模块启用开关（生成 `$MODDIR/disable` 或 `remove`），或开机启动失败时，立即通过 `pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity` 隐藏入口，并通过 `/data/adb/service.d/openlist_companion_sync.sh` 与后台状态守卫确保重启或模块禁用后入口不会残留。
+4. **离线提交后目标目录缓存自动刷新（Directory Cache Dual-Stage Auto-Refresh）**：
+   - OpenList Daemon 在以 `115 Open` 驱动执行离线下载时，直接向目标挂载目录转存任务；当任务完成（尤其是热门资源秒传或 1~2 秒内快速完成时），OpenList Daemon 内部未主动失效内存目录缓存（`Cache.dirCache`），导致 Web UI 与 WebDAV 客户端无法即时看到新落盘的文件或目录。
+   - 伴侣应用在任务提交成功后，采取双阶段缓存刷新策略：
+     - **即时同步刷新**：在 `submitOfflineDownload` 确认接口返回成功后，立即向 `POST /api/fs/list` 发送携带 `"refresh": true` 的目标虚拟路径请求，快速触发 OpenList 内存缓存更新。
+     - **1.5 秒延迟跟随刷新**：`ProcessTextActivity` 随后拉起独立的脱机后台线程，在休眠 1500ms 后再次调用 `refreshDirectoryCache`，捕获提交后 1~2 秒内云端处理完成的离线任务，确保 Web UI 与 WebDAV 客户端无需手动刷新即可直接查看最新离线文件。
 
 ## Considered Options
 

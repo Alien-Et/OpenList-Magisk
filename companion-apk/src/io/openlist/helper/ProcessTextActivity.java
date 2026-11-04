@@ -394,6 +394,16 @@ public class ProcessTextActivity extends Activity {
                         targetUrls, config, 15000
                 );
 
+                if (res.success) {
+                    new Thread(() -> {
+                        try {
+                            Thread.sleep(1500);
+                        } catch (InterruptedException ignored) {
+                        }
+                        OfflineHelperCore.refreshDirectoryCache(finalTargetPath, config, 10000);
+                    }).start();
+                }
+
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
 
@@ -606,13 +616,13 @@ public class ProcessTextActivity extends Activity {
 
         // Nav click listeners
         upBtn.setOnClickListener(v -> {
-            loadDirectoryIntoPicker(OfflineHelperCore.parentVirtualPath(currentBrowsePath[0]), config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+            loadDirectoryIntoPicker(OfflineHelperCore.parentVirtualPath(currentBrowsePath[0]), config, currentBrowsePath, currentPathView, upBtn, folderListLayout, false);
         });
         rootBtn.setOnClickListener(v -> {
-            loadDirectoryIntoPicker("/", config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+            loadDirectoryIntoPicker("/", config, currentBrowsePath, currentPathView, upBtn, folderListLayout, false);
         });
         refreshBtn.setOnClickListener(v -> {
-            loadDirectoryIntoPicker(currentBrowsePath[0], config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+            loadDirectoryIntoPicker(currentBrowsePath[0], config, currentBrowsePath, currentPathView, upBtn, folderListLayout, true);
         });
 
         // Bottom button row
@@ -676,7 +686,7 @@ public class ProcessTextActivity extends Activity {
         pickerDialog.show();
 
         // Initial load
-        loadDirectoryIntoPicker(currentBrowsePath[0], config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+        loadDirectoryIntoPicker(currentBrowsePath[0], config, currentBrowsePath, currentPathView, upBtn, folderListLayout, false);
     }
 
     private void loadDirectoryIntoPicker(
@@ -685,7 +695,8 @@ public class ProcessTextActivity extends Activity {
             String[] currentBrowsePath,
             TextView currentPathView,
             Button upBtn,
-            LinearLayout folderListLayout
+            LinearLayout folderListLayout,
+            boolean forceRefresh
     ) {
         String normalized = OfflineHelperCore.normalizeVirtualPath(targetPath);
         currentBrowsePath[0] = normalized;
@@ -706,7 +717,7 @@ public class ProcessTextActivity extends Activity {
         folderListLayout.addView(loadingView);
 
         new Thread(() -> {
-            OfflineHelperCore.DirListResult res = OfflineHelperCore.listDirectories(normalized, config, 10000);
+            OfflineHelperCore.DirListResult res = OfflineHelperCore.listDirectories(normalized, config, forceRefresh, 10000);
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed() || pickerDialog == null || !pickerDialog.isShowing()) {
                     return;
@@ -741,7 +752,7 @@ public class ProcessTextActivity extends Activity {
                     retryBg.setStroke(dpToPx(1), Color.parseColor("#BFDBFE"));
                     retryBg.setCornerRadius(dpToPx(6));
                     retryBtn.setBackground(retryBg);
-                    retryBtn.setOnClickListener(v -> loadDirectoryIntoPicker(normalized, config, currentBrowsePath, currentPathView, upBtn, folderListLayout));
+                    retryBtn.setOnClickListener(v -> loadDirectoryIntoPicker(normalized, config, currentBrowsePath, currentPathView, upBtn, folderListLayout, true));
                     actionRow.addView(retryBtn);
 
                     if (!"/".equals(normalized)) {
@@ -758,7 +769,7 @@ public class ProcessTextActivity extends Activity {
                         LinearLayout.LayoutParams fbParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                         fbParams.leftMargin = dpToPx(8);
                         fallbackRootBtn.setLayoutParams(fbParams);
-                        fallbackRootBtn.setOnClickListener(v -> loadDirectoryIntoPicker("/", config, currentBrowsePath, currentPathView, upBtn, folderListLayout));
+                        fallbackRootBtn.setOnClickListener(v -> loadDirectoryIntoPicker("/", config, currentBrowsePath, currentPathView, upBtn, folderListLayout, false));
                         actionRow.addView(fallbackRootBtn);
                     }
 
@@ -814,7 +825,7 @@ public class ProcessTextActivity extends Activity {
 
                     final String subPath = OfflineHelperCore.joinVirtualPath(normalized, dirName);
                     itemRow.setOnClickListener(v -> {
-                        loadDirectoryIntoPicker(subPath, config, currentBrowsePath, currentPathView, upBtn, folderListLayout);
+                        loadDirectoryIntoPicker(subPath, config, currentBrowsePath, currentPathView, upBtn, folderListLayout, false);
                     });
 
                     folderListLayout.addView(itemRow);

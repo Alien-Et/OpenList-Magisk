@@ -553,6 +553,15 @@ public final class OfflineHelperCore {
             res = executeAddOfflineDownload(baseUrl, sanitizedToken, urls, path, tool, deletePolicy, timeoutMs);
         }
 
+        // Best-effort cache invalidation on success
+        if (res.success) {
+            try {
+                refreshDirectoryCache(baseUrl, sanitizedToken, path, timeoutMs);
+            } catch (Exception ignored) {
+                // Best-effort cache invalidation, never alter or fail res
+            }
+        }
+
         return res;
     }
 
@@ -685,13 +694,21 @@ public final class OfflineHelperCore {
     }
 
     /**
-     * Builds request payload for OpenList /api/fs/list.
+     * Builds request payload for OpenList /api/fs/list with default refresh=false.
      * Root path is "/", non-root paths have their trailing slash stripped.
      */
     public static String buildListDirectoryPayload(String path) {
+        return buildListDirectoryPayload(path, false);
+    }
+
+    /**
+     * Builds request payload for OpenList /api/fs/list with specified refresh flag.
+     * Root path is "/", non-root paths have their trailing slash stripped.
+     */
+    public static String buildListDirectoryPayload(String path, boolean refresh) {
         String normalized = normalizeVirtualPath(path);
         String apiPath = "/".equals(normalized) ? "/" : (normalized.endsWith("/") ? normalized.substring(0, normalized.length() - 1) : normalized);
-        return "{\"path\":\"" + escapeJson(apiPath) + "\",\"password\":\"\",\"page\":1,\"per_page\":0,\"refresh\":false}";
+        return "{\"path\":\"" + escapeJson(apiPath) + "\",\"password\":\"\",\"page\":1,\"per_page\":0,\"refresh\":" + (refresh ? "true" : "false") + "}";
     }
 
     /**
@@ -869,24 +886,39 @@ public final class OfflineHelperCore {
     }
 
     /**
-     * Lists subdirectories for a given virtual path using OfflineConfig.
+     * Lists subdirectories for a given virtual path using OfflineConfig (cached, refresh=false).
      */
     public static DirListResult listDirectories(String path, OfflineConfig config, int timeoutMs) {
+        return listDirectories(path, config, false, timeoutMs);
+    }
+
+    /**
+     * Lists subdirectories for a given virtual path using OfflineConfig with optional forced refresh.
+     */
+    public static DirListResult listDirectories(String path, OfflineConfig config, boolean refresh, int timeoutMs) {
         String host = (config != null && config.host != null && !config.host.isEmpty()) ? config.host : "127.0.0.1";
         int port = (config != null && config.port > 0) ? config.port : 5244;
         String baseUrl = "http://" + host + ":" + port;
         String token = (config != null) ? sanitizeToken(config.token) : "";
-        return listDirectories(baseUrl, token, path, timeoutMs);
+        return listDirectories(baseUrl, token, path, refresh, timeoutMs);
     }
 
     /**
-     * Lists subdirectories for a given virtual path from OpenList daemon.
+     * Lists subdirectories for a given virtual path from OpenList daemon (cached, refresh=false).
      * Automatically attempts recovery via /api/admin/storage/load_all if storage is uninitialized.
      */
     public static DirListResult listDirectories(String baseUrl, String token, String path, int timeoutMs) {
+        return listDirectories(baseUrl, token, path, false, timeoutMs);
+    }
+
+    /**
+     * Lists subdirectories for a given virtual path from OpenList daemon with optional forced refresh.
+     * Automatically attempts recovery via /api/admin/storage/load_all if storage is uninitialized.
+     */
+    public static DirListResult listDirectories(String baseUrl, String token, String path, boolean refresh, int timeoutMs) {
         String sanitizedToken = sanitizeToken(token);
         String normalizedPath = normalizeVirtualPath(path);
-        DirListResult res = executeListDirectories(baseUrl, sanitizedToken, normalizedPath, timeoutMs);
+        DirListResult res = executeListDirectories(baseUrl, sanitizedToken, normalizedPath, refresh, timeoutMs);
 
         // Auto-heal: if code != 200 and error indicates storage not init/disabled, reload storage and retry once
         if (!res.success && res.isStorageError()) {
@@ -896,13 +928,33 @@ public final class OfflineHelperCore {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            res = executeListDirectories(baseUrl, sanitizedToken, normalizedPath, timeoutMs);
+            res = executeListDirectories(baseUrl, sanitizedToken, normalizedPath, refresh, timeoutMs);
         }
 
         return res;
     }
 
-    private static DirListResult executeListDirectories(String baseUrl, String token, String normalizedPath, int timeoutMs) {
+    /**
+     * Forces OpenList to refresh its directory cache for the given path using OfflineConfig.
+     * Invokes /api/fs/list with refresh=true.
+     * Returns true if the refresh succeeded.
+     */
+    public static boolean refreshDirectoryCache(String path, OfflineConfig config, int timeoutMs) {
+        DirListResult res = listDirectories(path, config, true, timeoutMs);
+        return res != null && res.success;
+    }
+
+    /**
+     * Forces OpenList to refresh its directory cache for the given path from OpenList daemon.
+     * Invokes /api/fs/list with refresh=true.
+     * Returns true if the refresh succeeded.
+     */
+    public static boolean refreshDirectoryCache(String baseUrl, String token, String path, int timeoutMs) {
+        DirListResult res = listDirectories(baseUrl, token, path, true, timeoutMs);
+        return res != null && res.success;
+    }
+
+    private static DirListResult executeListDirectories(String baseUrl, String token, String normalizedPath, boolean refresh, int timeoutMs) {
         if (baseUrl == null || baseUrl.trim().isEmpty()) {
             baseUrl = "http://127.0.0.1:5244";
         }
@@ -910,7 +962,7 @@ public final class OfflineHelperCore {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
         String endpoint = baseUrl + "/api/fs/list";
-        String payload = buildListDirectoryPayload(normalizedPath);
+        String payload = buildListDirectoryPayload(normalizedPath, refresh);
         HttpURLConnection conn = null;
         try {
             URL url = new URL(endpoint);

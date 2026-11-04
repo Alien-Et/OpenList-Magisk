@@ -45,6 +45,7 @@ public class OfflineHelperCoreTest {
         runTest("testVirtualPathHelpers", OfflineHelperCoreTest::testVirtualPathHelpers);
         runTest("testParseDirectoryNamesFromListJson", OfflineHelperCoreTest::testParseDirectoryNamesFromListJson);
         runTest("testListDirectoriesMockHttpAndAutoHeal", OfflineHelperCoreTest::testListDirectoriesMockHttpAndAutoHeal);
+        runTest("testDirectoryCacheRefreshAndAutoInvalidateOnSubmit", OfflineHelperCoreTest::testDirectoryCacheRefreshAndAutoInvalidateOnSubmit);
 
         System.out.println("=== Test Summary: " + testsPassed + "/" + testsRun + " passed ===");
         if (testsPassed != testsRun) {
@@ -580,6 +581,12 @@ public class OfflineHelperCoreTest {
                 OfflineHelperCore.buildListDirectoryPayload("/115"), "Payload for /115");
         assertTrue(OfflineHelperCore.buildListDirectoryPayload("/115/特殊\"名/").contains("\\\""),
                 "Payload properly escapes quotes in path");
+        assertEquals("{\"path\":\"/\",\"password\":\"\",\"page\":1,\"per_page\":0,\"refresh\":true}",
+                OfflineHelperCore.buildListDirectoryPayload("/", true), "Payload for root / with refresh=true");
+        assertEquals("{\"path\":\"/115/影视\",\"password\":\"\",\"page\":1,\"per_page\":0,\"refresh\":true}",
+                OfflineHelperCore.buildListDirectoryPayload("/115/影视/", true), "Payload for /115/影视/ with refresh=true");
+        assertEquals("{\"path\":\"/115/影视\",\"password\":\"\",\"page\":1,\"per_page\":0,\"refresh\":false}",
+                OfflineHelperCore.buildListDirectoryPayload("/115/影视/", false), "Payload for /115/影视/ with refresh=false");
     }
 
     private static void testParseDirectoryNamesFromListJson() {
@@ -732,6 +739,132 @@ public class OfflineHelperCoreTest {
             assertTrue(configRes.success, "Config-based listDirectories succeeds");
             assertEquals("/", configRes.currentPath, "Root path is /");
             assertEquals(2, configRes.directories.size(), "Root dirs count");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static void testDirectoryCacheRefreshAndAutoInvalidateOnSubmit() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        int port = server.getAddress().getPort();
+        String baseUrl = "http://127.0.0.1:" + port;
+        String token = "test_token_123456789012345678901234567890";
+
+        AtomicInteger listCallCount = new AtomicInteger(0);
+        AtomicReference<String> lastListBody = new AtomicReference<>("");
+        AtomicInteger listHttpStatus = new AtomicInteger(200);
+        AtomicReference<String> listResponseBody = new AtomicReference<>(
+                "{\"code\":200,\"message\":\"success\",\"data\":{\"content\":[{\"name\":\"FolderA\",\"is_dir\":true}]}}"
+        );
+
+        AtomicInteger addCallCount = new AtomicInteger(0);
+        AtomicReference<String> lastAddBody = new AtomicReference<>("");
+        AtomicInteger addHttpStatus = new AtomicInteger(200);
+        AtomicReference<String> addResponseBody = new AtomicReference<>("{\"code\":200,\"message\":\"success\",\"data\":null}");
+
+        server.createContext("/api/fs/list", exchange -> {
+            listCallCount.incrementAndGet();
+            try (InputStream is = exchange.getRequestBody();
+                 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                byte[] buf = new byte[1024];
+                int len;
+                while ((len = is.read(buf)) != -1) {
+                    baos.write(buf, 0, len);
+                }
+                lastListBody.set(baos.toString(StandardCharsets.UTF_8.name()));
+            }
+
+            byte[] respBytes = listResponseBody.get().getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(listHttpStatus.get(), respBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(respBytes);
+                os.flush();
+            }
+        });
+
+        server.createContext("/api/fs/add_offline_download", exchange -> {
+            addCallCount.incrementAndGet();
+            try (InputStream is = exchange.getRequestBody();
+                 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                byte[] buf = new byte[1024];
+                int len;
+                while ((len = is.read(buf)) != -1) {
+                    baos.write(buf, 0, len);
+                }
+                lastAddBody.set(baos.toString(StandardCharsets.UTF_8.name()));
+            }
+
+            byte[] respBytes = addResponseBody.get().getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(addHttpStatus.get(), respBytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(respBytes);
+                os.flush();
+            }
+        });
+
+        server.start();
+
+        try {
+            // 1. Verify listDirectories with refresh=false sends refresh:false
+            OfflineHelperCore.DirListResult resCached = OfflineHelperCore.listDirectories(baseUrl, token, "/115/影视/", false, 5000);
+            assertTrue(resCached.success, "Cached listDirectories succeeds");
+            assertTrue(lastListBody.get().contains("\"refresh\":false"), "Cached listDirectories sends refresh:false");
+            assertTrue(lastListBody.get().contains("\"path\":\"/115/影视\""), "Path sent without trailing slash");
+            assertEquals(1, resCached.directories.size(), "1 directory returned");
+            assertEquals("FolderA", resCached.directories.get(0), "FolderA matched");
+
+            // 2. Verify listDirectories with refresh=true sends refresh:true
+            OfflineHelperCore.DirListResult resForced = OfflineHelperCore.listDirectories(baseUrl, token, "/115/影视/", true, 5000);
+            assertTrue(resForced.success, "Forced listDirectories succeeds");
+            assertTrue(lastListBody.get().contains("\"refresh\":true"), "Forced listDirectories sends refresh:true");
+
+            // 3. Verify refreshDirectoryCache sends refresh:true and returns true on success
+            boolean refreshed = OfflineHelperCore.refreshDirectoryCache(baseUrl, token, "/115/影视/", 5000);
+            assertTrue(refreshed, "refreshDirectoryCache returns true on 200");
+            assertTrue(lastListBody.get().contains("\"refresh\":true"), "refreshDirectoryCache sends refresh:true");
+
+            // 4. Verify refreshDirectoryCache with OfflineConfig
+            OfflineHelperCore.OfflineConfig cfg = new OfflineHelperCore.OfflineConfig();
+            cfg.host = "127.0.0.1";
+            cfg.port = port;
+            cfg.token = token;
+            boolean configRefreshed = OfflineHelperCore.refreshDirectoryCache("/115/影视/", cfg, 5000);
+            assertTrue(configRefreshed, "refreshDirectoryCache with config returns true");
+            assertTrue(lastListBody.get().contains("\"refresh\":true"), "refreshDirectoryCache with config sends refresh:true");
+
+            // 5. Verify submitOfflineDownload automatically invokes /api/fs/list with refresh=true upon success
+            int listCallsBefore = listCallCount.get();
+            List<String> urls = Collections.singletonList("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567");
+            OfflineHelperCore.ApiResult submitRes = OfflineHelperCore.submitOfflineDownload(
+                    baseUrl, token, urls, "/115/影视/", "115 Open", "delete_on_upload_succeed", 5000
+            );
+            assertTrue(submitRes.success, "submitOfflineDownload succeeds");
+            assertEquals(listCallsBefore + 1, listCallCount.get(), "submitOfflineDownload triggered an additional /api/fs/list call");
+            assertTrue(lastListBody.get().contains("\"refresh\":true"), "submitOfflineDownload triggered refresh:true");
+            assertTrue(lastListBody.get().contains("\"path\":\"/115/影视\""), "submitOfflineDownload refreshed target path");
+
+            // 6. Verify submitOfflineDownload succeeds even if /api/fs/list fails (best-effort cache invalidation)
+            listHttpStatus.set(500);
+            listResponseBody.set("{\"code\":500,\"message\":\"list error\",\"data\":null}");
+            OfflineHelperCore.ApiResult submitWithListError = OfflineHelperCore.submitOfflineDownload(
+                    baseUrl, token, urls, "/115/动漫/", "115 Open", "delete_on_upload_succeed", 5000
+            );
+            assertTrue(submitWithListError.success, "submitOfflineDownload must still succeed even if list/refresh returns 500");
+            assertEquals(200, submitWithListError.code, "Submit code remains 200 from add_offline_download");
+            assertTrue(lastListBody.get().contains("\"path\":\"/115/动漫\""), "Refresh was still attempted for /115/动漫");
+
+            // 7. Verify submitOfflineDownload does NOT call refreshDirectoryCache if add_offline_download failed
+            addHttpStatus.set(500);
+            addResponseBody.set("{\"code\":500,\"message\":\"storage full\",\"data\":null}");
+            int listCallsBeforeFail = listCallCount.get();
+            OfflineHelperCore.ApiResult failRes = OfflineHelperCore.submitOfflineDownload(
+                    baseUrl, token, urls, "/115/影视/", "115 Open", "delete_on_upload_succeed", 5000
+            );
+            assertTrue(!failRes.success, "submitOfflineDownload failed as expected");
+            assertEquals(listCallsBeforeFail, listCallCount.get(), "No refresh call when add_offline_download fails");
+
         } finally {
             server.stop(0);
         }
