@@ -37,6 +37,19 @@ assert_file_contains() {
     fi
 }
 
+assert_file_not_contains() {
+    local file="$1"
+    local pattern="$2"
+    local message="$3"
+    TOTAL=$((TOTAL + 1))
+    if ! grep -qE "$pattern" "$file" 2>/dev/null; then
+        echo "  [PASS] $message"
+    else
+        echo "  [FAIL] $message: file '$file' unexpectedly matches pattern '$pattern'"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
 # 测试环境临时目录
 TEST_TMP=$(mktemp -d)
 trap 'rm -rf "$TEST_TMP"' EXIT
@@ -508,173 +521,12 @@ assert_eq "0" "$ACTION_RET" "ENABLE_DISABLE_WATCHER=1 时 output=\$(sh action.sh
 assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "真实 service.sh 启动后启用 115 离线菜单"
 
 # -------------------------------------------------------------
-# 测试 17: patch_openlist_binary_sqlite_dsn 修补二进制 DSN 并保持文件大小
+# 测试 17: has_enabled_115_storage 检测网盘状态与菜单可见性强绑定
 # -------------------------------------------------------------
 echo ""
-echo "-> 测试 17: patch_openlist_binary_sqlite_dsn 修补二进制 SQLite DSN 连接参数"
-MOCK_BIN="$TEST_TMP/mock_openlist_bin"
-printf '\x00\x01\xFE\xAA%%s?_journal=WAL&_vacuum=incremental\x00\xFF\xBB' > "$MOCK_BIN"
-chmod 755 "$MOCK_BIN"
-BIN_SIZE_BEFORE=$(wc -c < "$MOCK_BIN" | tr -d ' \r\n')
+echo "-> 测试 17: has_enabled_115_storage 存储状态校验与系统菜单可见性联动"
 
-patch_openlist_binary_sqlite_dsn "$MOCK_BIN"
-
-BIN_SIZE_AFTER=$(wc -c < "$MOCK_BIN" | tr -d ' \r\n')
-assert_eq "$BIN_SIZE_BEFORE" "$BIN_SIZE_AFTER" "patch_openlist_binary_sqlite_dsn 保持二进制文件总字节大小完全不变"
-assert_file_contains "$MOCK_BIN" "busy_timeout\(10000\)&_v=1" "patch_openlist_binary_sqlite_dsn 成功替换为 busy_timeout(10000)&_v=1"
-
-FIRST_4_BYTES=$(od -An -tx1 -N 4 "$MOCK_BIN" 2>/dev/null | tr -d ' \r\n')
-assert_eq "0001feaa" "$FIRST_4_BYTES" "patch_openlist_binary_sqlite_dsn 保留目标字符串前面的二进制字节"
-
-LAST_3_BYTES=$(od -An -tx1 -j $((BIN_SIZE_AFTER - 3)) -N 3 "$MOCK_BIN" 2>/dev/null | tr -d ' \r\n')
-assert_eq "00ffbb" "$LAST_3_BYTES" "patch_openlist_binary_sqlite_dsn 保留目标字符串后面的二进制字节"
-
-patch_openlist_binary_sqlite_dsn "$MOCK_BIN"
-BIN_SIZE_SECOND=$(wc -c < "$MOCK_BIN" | tr -d ' \r\n')
-assert_eq "$BIN_SIZE_BEFORE" "$BIN_SIZE_SECOND" "二次运行 patch_openlist_binary_sqlite_dsn 保持幂等且文件大小不变"
-
-# -------------------------------------------------------------
-# 测试 18: ensure_sqlite_wal_and_clean_locks 持久化 SQLite WAL 头及孤立锁清理
-# -------------------------------------------------------------
-echo ""
-echo "-> 测试 18: ensure_sqlite_wal_and_clean_locks 持久化 SQLite WAL 模式与清理孤立锁"
-MOCK_SQLITE_DB="$TEST_TMP/mock_data.db"
-create_mock_sqlite_db() {
-    dd if=/dev/zero of="$1" bs=1 count=128 2>/dev/null
-    printf 'SQLite format 3\000\020\000\001\001' | dd of="$1" bs=1 seek=0 conv=notrunc 2>/dev/null
-}
-
-# 18a: 无锁正常 mock SQLite 文件升级为 WAL
-create_mock_sqlite_db "$MOCK_SQLITE_DB"
-ensure_sqlite_wal_and_clean_locks "$MOCK_SQLITE_DB"
-DB_VER_AFTER=$(od -An -tx1 -j 18 -N 2 "$MOCK_SQLITE_DB" 2>/dev/null | tr -d ' \n\r')
-assert_eq "0202" "$DB_VER_AFTER" "ensure_sqlite_wal_and_clean_locks 将 SQLite 3 头部 offset 18..19 升级为 0202 (WAL)"
-DB_SIZE_AFTER=$(wc -c < "$MOCK_SQLITE_DB" | tr -d ' \r\n')
-assert_eq "128" "$DB_SIZE_AFTER" "ensure_sqlite_wal_and_clean_locks 保持数据库文件大小不变"
-
-# 18b: 幂等性检测
-ensure_sqlite_wal_and_clean_locks "$MOCK_SQLITE_DB"
-DB_VER_IDEMPOTENT=$(od -An -tx1 -j 18 -N 2 "$MOCK_SQLITE_DB" 2>/dev/null | tr -d ' \n\r')
-assert_eq "0202" "$DB_VER_IDEMPOTENT" "二次调用 ensure_sqlite_wal_and_clean_locks 保持 0202 幂等"
-
-# 18c: 清理 0 字节 data.db-journal
-create_mock_sqlite_db "$MOCK_SQLITE_DB"
-touch "${MOCK_SQLITE_DB}-journal"
-ensure_sqlite_wal_and_clean_locks "$MOCK_SQLITE_DB"
-TOTAL=$((TOTAL + 1))
-if [ ! -f "${MOCK_SQLITE_DB}-journal" ]; then
-    echo "  [PASS] ensure_sqlite_wal_and_clean_locks 成功删除 0 字节残留 journal 文件"
-else
-    echo "  [FAIL] ensure_sqlite_wal_and_clean_locks 未能删除 0 字节残留 journal 文件"
-    FAILED=$((FAILED + 1))
-fi
-DB_VER_JOURNAL_CLEANED=$(od -An -tx1 -j 18 -N 2 "$MOCK_SQLITE_DB" 2>/dev/null | tr -d ' \n\r')
-assert_eq "0202" "$DB_VER_JOURNAL_CLEANED" "清理 0 字节 journal 后顺利将数据库升级为 WAL"
-
-# 18d: 非空 rollback journal 存在且无 sqlite3 / sqlite3 失败时保护文件不被破坏
-create_mock_sqlite_db "$MOCK_SQLITE_DB"
-echo "uncommitted transaction payload" > "${MOCK_SQLITE_DB}-journal"
-MOCK_FAIL_SQLITE_DIR="$TEST_TMP/mock_fail_sqlite_bin"
-mkdir -p "$MOCK_FAIL_SQLITE_DIR"
-cat > "$MOCK_FAIL_SQLITE_DIR/sqlite3" << 'EOF'
-#!/usr/bin/env bash
-exit 1
-EOF
-chmod +x "$MOCK_FAIL_SQLITE_DIR/sqlite3"
-(
-    export PATH="$MOCK_FAIL_SQLITE_DIR:$PATH"
-    ensure_sqlite_wal_and_clean_locks "$MOCK_SQLITE_DB"
-)
-DB_VER_PROTECTED=$(od -An -tx1 -j 18 -N 2 "$MOCK_SQLITE_DB" 2>/dev/null | tr -d ' \n\r')
-assert_eq "0101" "$DB_VER_PROTECTED" "当存在活跃非空 journal 且未恢复时跳过头部覆写保护数据"
-TOTAL=$((TOTAL + 1))
-if [ -f "${MOCK_SQLITE_DB}-journal" ]; then
-    echo "  [PASS] 未恢复的非空 journal 文件保留完好"
-else
-    echo "  [FAIL] 非空 journal 文件被意外删除"
-    FAILED=$((FAILED + 1))
-fi
-rm -f "${MOCK_SQLITE_DB}-journal"
-
-# 18e: 非 SQLite 3 文件不受影响
-NOT_SQLITE="$TEST_TMP/not_sqlite.txt"
-echo "Plain text file for testing" > "$NOT_SQLITE"
-ensure_sqlite_wal_and_clean_locks "$NOT_SQLITE"
-assert_file_contains "$NOT_SQLITE" "^Plain text file for testing$" "非 SQLite 文件不被修改"
-
-# 18f: 小于 100 字节的文件即使以 SQLite format 3 开头也不被修改
-MOCK_SMALL_DB="$TEST_TMP/mock_small.db"
-dd if=/dev/zero of="$MOCK_SMALL_DB" bs=1 count=50 2>/dev/null
-printf 'SQLite format 3\000\020\000\001\001' | dd of="$MOCK_SMALL_DB" bs=1 seek=0 conv=notrunc 2>/dev/null
-SMALL_SIZE_BEFORE=$(wc -c < "$MOCK_SMALL_DB" | tr -d ' \r\n')
-SMALL_HEX_BEFORE=$(od -An -tx1 -j 18 -N 2 "$MOCK_SMALL_DB" 2>/dev/null | tr -d ' \n\r')
-ensure_sqlite_wal_and_clean_locks "$MOCK_SMALL_DB"
-SMALL_SIZE_AFTER=$(wc -c < "$MOCK_SMALL_DB" | tr -d ' \r\n')
-SMALL_HEX_AFTER=$(od -An -tx1 -j 18 -N 2 "$MOCK_SMALL_DB" 2>/dev/null | tr -d ' \n\r')
-assert_eq "$SMALL_SIZE_BEFORE" "$SMALL_SIZE_AFTER" "小于 100 字节文件大小保持不变"
-assert_eq "0101" "$SMALL_HEX_AFTER" "小于 100 字节的残缺 SQLite 文件头部不被修改"
-
-# 18g: 守护进程正在运行中时，保护数据库不被启动脚本修改
-touch "$FAKE_RUNNING"
-create_mock_sqlite_db "$MOCK_SQLITE_DB"
-(
-    export OPENLIST_BINARY="/fake/bin/openlist"
-    ensure_sqlite_wal_and_clean_locks "$MOCK_SQLITE_DB"
-)
-DB_VER_RUNNING=$(od -An -tx1 -j 18 -N 2 "$MOCK_SQLITE_DB" 2>/dev/null | tr -d ' \n\r')
-assert_eq "0101" "$DB_VER_RUNNING" "守护进程正在运行时跳过数据库修改保护在线连接"
-rm -f "$FAKE_RUNNING"
-
-# -------------------------------------------------------------
-# 测试 19: optimize_openlist_config 优化 OpenList 日志过滤与轮转配置
-# -------------------------------------------------------------
-echo ""
-echo "-> 测试 19: optimize_openlist_config 优化 OpenList 日志过滤与轮转配置"
-MOCK_CONFIG="$TEST_TMP/mock_config.json"
-cat > "$MOCK_CONFIG" << 'EOF'
-{
-  "force": false,
-  "jwt_secret": "custom_jwt_secret_987654",
-  "scheme": {
-    "address": "0.0.0.0",
-    "http_port": 5244
-  },
-  "log": {
-    "enable": true,
-    "name": "data/log/log.log",
-    "max_size": 50,
-    "max_backups": 30,
-    "max_age": 28,
-    "compress": false,
-    "filter": {
-      "enable": false,
-      "rules": []
-    }
-  }
-}
-EOF
-
-optimize_openlist_config "$MOCK_CONFIG"
-
-assert_file_contains "$MOCK_CONFIG" '"max_size"[[:space:]]*:[[:space:]]*10' "optimize_openlist_config 将 max_size 设置为 10MB"
-assert_file_contains "$MOCK_CONFIG" '"max_backups"[[:space:]]*:[[:space:]]*3' "optimize_openlist_config 将 max_backups 设置为 3"
-FILTER_ENABLE_VAL=$(sed -n '/"filter"[[:space:]]*:[[:space:]]*{/,/}/p' "$MOCK_CONFIG" | grep '"enable"' | tr -d ' ",\r\n')
-assert_eq "enable:true" "$FILTER_ENABLE_VAL" "optimize_openlist_config 启用 filter.enable=true"
-assert_file_contains "$MOCK_CONFIG" '"jwt_secret"[[:space:]]*:[[:space:]]*"custom_jwt_secret_987654"' "optimize_openlist_config 保留用户自定义 jwt_secret"
-assert_file_contains "$MOCK_CONFIG" '"http_port"[[:space:]]*:[[:space:]]*5244' "optimize_openlist_config 保留用户自定义 http_port"
-assert_file_contains "$MOCK_CONFIG" '"force"[[:space:]]*:[[:space:]]*false' "optimize_openlist_config 保留用户其他顶层配置"
-
-# 幂等性检测
-optimize_openlist_config "$MOCK_CONFIG"
-assert_file_contains "$MOCK_CONFIG" '"max_size"[[:space:]]*:[[:space:]]*10' "二次执行 optimize_openlist_config 保持 max_size=10 幂等"
-
-# -------------------------------------------------------------
-# 测试 20: has_enabled_115_storage 检测网盘状态与菜单可见性强绑定
-# -------------------------------------------------------------
-echo ""
-echo "-> 测试 20: has_enabled_115_storage 存储状态校验与系统菜单可见性联动"
-
-# 20a: data.db 无 115 网盘存储（仅本地存储）
+# 17a: data.db 无 115 网盘存储（仅本地存储）
 printf "\x00\x01/localLocal\x1ework{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
 rm -f "$DATA_DIR/data.db-wal"
 : > "$PM_LOG"
@@ -688,7 +540,7 @@ fi
 sync_companion_apk_and_config "5244"
 assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "data.db 无 115 存储时 sync_companion_apk_and_config 禁用系统菜单"
 
-# 20b: data.db 含有 115 存储但处于 disabled 状态
+# 17b: data.db 含有 115 存储但处于 disabled 状态
 printf "\x00\x01/115115 Cloud\x1edisabled{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
 rm -f "$DATA_DIR/data.db-wal"
 : > "$PM_LOG"
@@ -702,7 +554,7 @@ fi
 sync_companion_apk_and_config "5244"
 assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "data.db 115 存储禁用时 sync_companion_apk_and_config 禁用系统菜单"
 
-# 20c: data.db 含有已启用的 115 存储
+# 17c: data.db 含有已启用的 115 存储
 printf "\x00\x01/115115 Open\x1ework{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
 rm -f "$DATA_DIR/data.db-wal"
 : > "$PM_LOG"
@@ -716,7 +568,7 @@ fi
 sync_companion_apk_and_config "5244"
 assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "data.db 含有已启用 115 存储时 sync_companion_apk_and_config 启用系统菜单"
 
-# 20d: Live HTTP API /api/admin/storage/list 接口模拟测试 (Tier 1)
+# 17d: Live HTTP API /api/admin/storage/list 接口模拟测试 (Tier 1)
 MOCK_HTTP_DIR="$TEST_TMP/mock_http_bin"
 mkdir -p "$MOCK_HTTP_DIR"
 cat > "$MOCK_HTTP_DIR/curl" << 'EOF'
@@ -771,7 +623,7 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# 20e: watch_module_disable_state 在运行期动态根据 115 存储切换菜单可见性
+# 17e: watch_module_disable_state 在运行期动态根据 115 存储切换菜单可见性
 touch "$FAKE_RUNNING"
 : > "$PM_LOG"
 printf "\x00\x01/115115 Open\x1ework{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
@@ -789,6 +641,11 @@ rm -f "$FAKE_RUNNING"
 wait "$WATCH_PID" 2>/dev/null || true
 assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "watch_module_disable_state 运行时检测到 115 存储启用调用 pm enable"
 assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "watch_module_disable_state 运行时检测到 115 存储禁用动态调用 pm disable"
+
+# 17f: 校验 service.sh 已移除 SQLite WAL 与日志调优相关函数
+assert_file_not_contains "$SERVICE_SH" "patch_openlist_binary_sqlite_dsn" "service.sh 不包含 patch_openlist_binary_sqlite_dsn"
+assert_file_not_contains "$SERVICE_SH" "ensure_sqlite_wal_and_clean_locks" "service.sh 不包含 ensure_sqlite_wal_and_clean_locks"
+assert_file_not_contains "$SERVICE_SH" "optimize_openlist_config" "service.sh 不包含 optimize_openlist_config"
 
 # -------------------------------------------------------------
 # 测试汇总报告

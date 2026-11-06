@@ -48,8 +48,4 @@ _Avoid_: 数据库配置, 环境变量
 伴侣应用三个系统级触发入口（`PROCESS_TEXT` 划词菜单、`SEND` 分享菜单、`VIEW` 磁力链接拦截）在 Android 系统中的启用与隐藏状态，与 OpenList Daemon 的在线存活状态、模块启用状态以及 115 网盘存储（`115 Cloud` / `115 Open`）的添加与启用状态强绑定（未添加 115 存储或所有 115 存储处于禁用时自动隐藏）。
 _Avoid_: 卸载应用, 杀后台
 
-**SQLite Concurrency Self-Healing（SQLite 并发锁自愈）**:
-模块启动阶段针对 OpenList 数据库与二进制执行的并发防死锁加固机制，通过将 `data.db` 持久化为 WAL（Write-Ahead Logging）模式、清理异常残留回滚日志，并为数据库驱动注入 `busy_timeout` 锁等待超时，消除 WebDAV 与 API 高频并发访问下的 `SQLITE_BUSY` 死锁。
-_Avoid_: 删库重建, 定时重启脚本
-
 

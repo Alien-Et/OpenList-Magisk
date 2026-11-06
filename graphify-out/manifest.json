@@ -18,9 +18,9 @@
     "semantic_hash": ""
   },
   "OpenList-Magisk/service.sh": {
-    "mtime": 1793926031.4795413,
-    "seen": 1793926405.2614217,
-    "ast_hash": "eae0533b36185f29ad7fe9a8527568ae",
+    "mtime": 1793927285.243574,
+    "seen": 1793927568.5414586,
+    "ast_hash": "8c7afa1ca11f76363731b27aa8257b53",
     "semantic_hash": ""
   },
   "OpenList-Magisk/uninstall-user.sh": {
@@ -60,9 +60,9 @@
     "semantic_hash": ""
   },
   "tests/test_module_scripts.sh": {
-    "mtime": 1793926055.6245785,
-    "seen": 1793926405.2614326,
-    "ast_hash": "b6aadf755a0d8de356333cd5ea086214",
+    "mtime": 1793927184.964575,
+    "seen": 1793927568.5414717,
+    "ast_hash": "e0af68ce229ef4094ce9c7375dad2987",
     "semantic_hash": ""
   },
   "update.json": {
@@ -78,9 +78,9 @@
     "semantic_hash": "3569ed110907a990b4891b5c49e53bda"
   },
   "GLOSSARY.md": {
-    "mtime": 1793926230.7180462,
-    "seen": 1793926405.261437,
-    "ast_hash": "d8b666a1421ce0ab31847181208edc6c",
+    "mtime": 1793927379.5225034,
+    "seen": 1793927568.5414767,
+    "ast_hash": "0ba30a947d36e3e2434526c82b0616ed",
     "semantic_hash": ""
   },
   "OpenList-Magisk/CHANGELOG.md": {
@@ -90,15 +90,15 @@
     "semantic_hash": "02ced277f8fa78af56f194e7f6285e2c"
   },
   "OpenList-Magisk/README.md": {
-    "mtime": 1793926302.1354582,
-    "seen": 1793926405.2614396,
-    "ast_hash": "e9e360edc4f4ed631c92214f8cdb1794",
+    "mtime": 1793927457.7337165,
+    "seen": 1793927568.5414793,
+    "ast_hash": "e7b7c97180e382af28bdd196cdf7b32b",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793926274.4134433,
-    "seen": 1793926405.2614408,
-    "ast_hash": "c37fd2e68f8060c29c9e0d6550e8e768",
+    "mtime": 1793927415.5697896,
+    "seen": 1793927568.5414808,
+    "ast_hash": "0485f73897708477b9c40fb2cef7c3d2",
     "semantic_hash": ""
   },
   "docs/adr/0001-companion-apk-process-text-offline-download.md": {
@@ -147,18 +147,6 @@
     "mtime": 1793787027.5223606,
     "seen": 1793787507.9624536,
     "ast_hash": "e83915f4d05575f701ba8584987eb5bc",
-    "semantic_hash": ""
-  },
-  "docs/adr/0002-sqlite-wal-and-busy-timeout-patch.md": {
-    "mtime": 1793801131.8927076,
-    "seen": 1793801195.3776724,
-    "ast_hash": "f4858a8e2499f71fd3d24e803a110260",
-    "semantic_hash": ""
-  },
-  "docs/plans/sqlite-wal-self-healing-plan.md": {
-    "mtime": 1793801151.2897134,
-    "seen": 1793801195.3776772,
-    "ast_hash": "48c3f9ba8c28d5fde43958aa3bc818db",
     "semantic_hash": ""
   },
   "docs/plans/115-storage-menu-check-and-pr-revert-plan.md": {
