@@ -215,6 +215,40 @@ else
     abort "❌ 错误：未找到 service.sh"
 fi
 
+# 初始化伴侣应用离线配置（若不存在则创建，保留用户既有配置）
+mkdir -p "$DATA_DIR"
+if [ ! -f "$DATA_DIR/offline.conf" ]; then
+    ui_print "📝 初始化 115 离线下载伴侣配置..."
+    cat > "$DATA_DIR/offline.conf" << 'EOF'
+# OpenList 115 离线下载伴侣配置
+HOST=127.0.0.1
+PORT=5244
+TOKEN=
+PATH=/115/影视/
+TOOL=115 Open
+DELETE_POLICY=delete_on_upload_succeed
+PRESET_PATHS=/115/影视/,/115/
+EOF
+    chmod 644 "$DATA_DIR/offline.conf" 2>/dev/null || true
+fi
+
+# 处理伴侣应用 (OpenListHelper)
+HELPER_DIR="$MODROOT/system/app/OpenListHelper"
+HELPER_APK="$HELPER_DIR/OpenListHelper.apk"
+if [ -f "$HELPER_APK" ]; then
+    ui_print "📱 配置 115 离线伴侣应用..."
+    chmod 755 "$HELPER_DIR" 2>/dev/null || true
+    chmod 644 "$HELPER_APK" 2>/dev/null || true
+    chcon -R u:object_r:system_file:s0 "$HELPER_DIR" 2>/dev/null || true
+    if [ "$(getprop sys.boot_completed)" = "1" ]; then
+        ui_print "⚡ 正在动态安装伴侣应用..."
+        pm install -r "$HELPER_APK" >/dev/null 2>&1 || true
+        if ! pgrep -f "openlist server" >/dev/null 2>&1; then
+            pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+        fi
+    fi
+fi
+
 # 完成安装
 ui_print " "
 ui_print "✨ 安装完成"

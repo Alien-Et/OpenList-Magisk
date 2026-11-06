@@ -46,6 +46,19 @@ update_module_prop_stopped() {
     "$BUSYBOX" sed -i "s|^description=.*|description=【已停止】请点击\"操作\"启动程序。项目地址：${REPO_URL}|" "$MODULE_PROP"
 }
 
+# 同步伴侣应用系统文本菜单可见性
+set_companion_menu_enabled() {
+    local enabled="${1:-1}"
+    if command -v pm >/dev/null 2>&1; then
+        if [ "$enabled" = "1" ]; then
+            pm enable io.openlist.helper >/dev/null 2>&1 || true
+            pm enable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+        else
+            pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+        fi
+    fi
+}
+
 # 主逻辑：启停服务
 if check_openlist_status; then
     # 服务已运行：执行停止
@@ -57,6 +70,7 @@ if check_openlist_status; then
         exit 1
     else
         echo "✅ 停止成功"
+        set_companion_menu_enabled 0
         update_module_prop_stopped
     fi
 else
@@ -66,8 +80,12 @@ else
         sh "$SERVICE_SH"
         sleep 1  # 等待服务启动
         if check_openlist_status; then
+            if ! grep -q "sync_companion_apk_and_config" "$SERVICE_SH" 2>/dev/null; then
+                set_companion_menu_enabled 1
+            fi
             echo "✅ 启动成功"
         else
+            set_companion_menu_enabled 0
             echo "❌ 启动失败"
             exit 1
         fi

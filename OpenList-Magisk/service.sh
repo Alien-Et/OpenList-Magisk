@@ -3,10 +3,10 @@
 # service.sh for OpenList Magisk Module
 
 MODDIR="${0%/*}"
-DATA_DIR="__PLACEHOLDER_DATA_DIR__"
-OPENLIST_BINARY="__PLACEHOLDER_BINARY_PATH__"
-MODULE_PROP_FILE="$MODDIR/module.prop"
-LOG_FILE="$MODDIR/service.log"
+DATA_DIR="${DATA_DIR:-__PLACEHOLDER_DATA_DIR__}"
+OPENLIST_BINARY="${OPENLIST_BINARY:-__PLACEHOLDER_BINARY_PATH__}"
+MODULE_PROP_FILE="${MODULE_PROP_FILE:-$MODDIR/module.prop}"
+LOG_FILE="${LOG_FILE:-$MODDIR/service.log}"
 TEMP_IP_FILE="$MODDIR/ip_result.tmp"
 TEMP_PORT_FILE="$MODDIR/port_result.tmp"
 
@@ -175,6 +175,7 @@ update_module_prop_running() {
         port=$(cat "$TEMP_PORT_FILE" 2>/dev/null || echo "")
         rm -f "$TEMP_PORT_FILE" 2>/dev/null
         log "最终端口: $port"
+        DETECTED_PORT="$port"
 
         PASSWORD_TEXT=""
         if [ -f "${DATA_DIR}/初始密码.txt" ]; then
@@ -217,65 +218,424 @@ update_module_prop_running() {
     fi
 }
 
-log "启动 service.sh 于 $(date '+%Y-%m-%d %H:%M:%S')"
+extract_openlist_token() {
+    local db_file="$DATA_DIR/data.db"
+    [ ! -f "$db_file" ] && return 0
 
-if ! command -v ip >/dev/null; then
-    log "错误: 未找到 ip 命令"
-    exit 1
-fi
-
-if [ ! -f "$OPENLIST_BINARY" ]; then
-    log "错误: $OPENLIST_BINARY 不存在"
-    exit 1
-fi
-if [ ! -x "$OPENLIST_BINARY" ]; then
-    log "警告: $OPENLIST_BINARY 不可执行，尝试修复"
-    chmod 755 "$OPENLIST_BINARY" 2>/dev/null || {
-        log "错误: 无法设置 $OPENLIST_BINARY 的执行权限"
-        exit 1
-    }
-fi
-
-mkdir -p "$DATA_DIR" 2>/dev/null
-if [ $? -ne 0 ]; then
-    log "错误: 无法创建数据目录 $DATA_DIR"
-    exit 1
-fi
-if [ ! -w "$DATA_DIR" ]; then
-    log "警告: 数据目录 $DATA_DIR 不可写，尝试修复权限"
-    chmod 777 "$DATA_DIR" 2>/dev/null || {
-        log "错误: 无法设置 $DATA_DIR 的写权限"
-        exit 1
-    }
-fi
-log "已创建或验证数据目录：$DATA_DIR"
-
-ELAPSED=0
-MAX_WAIT=60
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-    if [ "$(getprop sys.boot_completed)" = "1" ]; then
-        log "Android 系统启动完成"
-        break
+    local token=""
+    # 方法 1：若存在 sqlite3 命令则直接查询 x_setting_items
+    if command -v sqlite3 >/dev/null 2>&1; then
+        token=$(sqlite3 "$db_file" "SELECT value FROM x_setting_items WHERE key='token' LIMIT 1;" 2>/dev/null)
     fi
-    log "等待 Android 系统启动... ($ELAPSED/$MAX_WAIT 秒)"
-    sleep 1
-    ELAPSED=$((ELAPSED + 1))
-done
 
-if [ $ELAPSED -ge $MAX_WAIT ]; then
-    log "警告: 系统启动超时，继续尝试启动 openlist"
+    local token_regex='(openlist|alist)-[A-Za-z0-9._-]{20,}'
+
+    # 方法 2：纯二进制/字符串正则兜底（免 sqlite3 依赖，兼容所有 Android 固件）
+    if [ -z "$token" ]; then
+        token=$(grep -aoE "$token_regex" "$db_file" 2>/dev/null | head -n 1)
+    fi
+    if [ -z "$token" ] && command -v strings >/dev/null 2>&1; then
+        token=$(strings "$db_file" 2>/dev/null | grep -oE "$token_regex" | head -n 1)
+    fi
+    if [ -z "$token" ]; then
+        token=$(tr -cd '[:print:]\n' < "$db_file" 2>/dev/null | grep -oE "$token_regex" | head -n 1)
+    fi
+
+    # SQLite 二进制页面中，x_setting_items 表里 value 紧跟 type='string'，纯二进制抽取会贪婪带出尾部 string
+    token=$(echo "$token" | tr -d '\r' | sed 's/string$//')
+
+    echo "$token"
+}
+
+set_companion_menu_enabled() {
+    local enabled="${1:-1}"
+    if command -v pm >/dev/null 2>&1; then
+        if [ "$enabled" = "1" ]; then
+            pm enable io.openlist.helper >/dev/null 2>&1 || true
+            pm enable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+            log "已启用 115 离线下载系统菜单入口 (ProcessTextActivity)"
+        else
+            pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+            log "已隐藏 115 离线下载系统菜单入口 (ProcessTextActivity)"
+        fi
+    fi
+}
+
+has_enabled_115_storage() {
+    local port="${1:-${DETECTED_PORT:-5244}}"
+    [ -z "$port" ] && port="5244"
+
+    # Tier 1: Live HTTP API /api/admin/storage/list
+    local conf_file="$DATA_DIR/offline.conf"
+    local token=""
+    if [ -f "$conf_file" ]; then
+        token=$(grep -E '^TOKEN=' "$conf_file" | head -n 1 | cut -d'=' -f2- | tr -d '\r' | sed 's/string$//')
+    fi
+    if [ -z "$token" ]; then
+        token=$(extract_openlist_token 2>/dev/null || true)
+    fi
+
+    if [ -n "$token" ]; then
+        local resp=""
+        local api_url="http://127.0.0.1:${port}/api/admin/storage/list"
+        local bb
+        bb=$(toast_find_busybox)
+        if command -v curl >/dev/null 2>&1; then
+            resp=$(curl -s -m 2 -H "Authorization: ${token}" "$api_url" 2>/dev/null || true)
+        elif command -v wget >/dev/null 2>&1; then
+            resp=$(wget -q -T 2 -O - --header="Authorization: ${token}" "$api_url" 2>/dev/null || true)
+        elif [ -n "$bb" ] && [ -x "$bb" ]; then
+            resp=$("$bb" wget -q -T 2 -O - --header="Authorization: ${token}" "$api_url" 2>/dev/null || true)
+        fi
+        if [ -n "$resp" ] && echo "$resp" | grep -qE '"code"[[:space:]]*:[[:space:]]*200'; then
+            if echo "$resp" | sed 's/{"id":/\n{"id":/g' | grep -E '"driver"[[:space:]]*:[[:space:]]*"115( Cloud| Open| 网盘(开放平台)?)?"' | grep -qE '"disabled"[[:space:]]*:[[:space:]]*false'; then
+                return 0
+            else
+                return 1
+            fi
+        fi
+    fi
+
+    # Tier 2: sqlite3 CLI on $DATA_DIR/data.db
+    local db_file="$DATA_DIR/data.db"
+    if [ -f "$db_file" ] && command -v sqlite3 >/dev/null 2>&1; then
+        local sql_count
+        if sql_count=$(sqlite3 "$db_file" "SELECT COUNT(*) FROM x_storages WHERE driver IN ('115 Cloud', '115 Open', '115', '115 网盘开放平台', '115 网盘') AND (disabled = 0 OR disabled = '0' OR disabled = 'false' OR disabled IS NULL);" 2>/dev/null); then
+            sql_count=$(echo "$sql_count" | tr -d '[:space:]')
+            if [ -n "$sql_count" ]; then
+                if [ "$sql_count" -gt 0 ] 2>/dev/null; then
+                    return 0
+                else
+                    return 1
+                fi
+            fi
+        fi
+    fi
+
+    # Tier 3: Pure binary/string fallback on ${db_file}-wal and $db_file
+    local wal_file="${db_file}-wal"
+    if [ -f "$wal_file" ] && [ -s "$wal_file" ]; then
+        local wal_matches
+        wal_matches=$(grep -aoE '115 (Cloud|Open|网盘(开放平台)?).{0,24}' "$wal_file" 2>/dev/null | tr -cd '[:print:]\n' || true)
+        if [ -n "$wal_matches" ]; then
+            local last_wal
+            last_wal=$(echo "$wal_matches" | tail -n 1)
+            if echo "$last_wal" | grep -q 'disabled' || echo "$wal_matches" | grep -q 'disabled'; then
+                return 1
+            else
+                return 0
+            fi
+        fi
+    fi
+
+    if [ ! -f "$db_file" ]; then
+        return 1
+    fi
+
+    local db_matches
+    db_matches=$(grep -aoE '115 (Cloud|Open|网盘(开放平台)?).{0,24}' "$db_file" 2>/dev/null | tr -cd '[:print:]\n' || true)
+    if [ -z "$db_matches" ] && command -v strings >/dev/null 2>&1; then
+        db_matches=$(strings "$db_file" 2>/dev/null | grep -E '115 (Cloud|Open|网盘(开放平台)?).{0,24}' | tr -cd '[:print:]\n' || true)
+    fi
+    if [ -z "$db_matches" ]; then
+        db_matches=$(tr -cd '[:print:]\n' < "$db_file" 2>/dev/null | grep -aoE '115 (Cloud|Open|网盘(开放平台)?).{0,24}' || true)
+    fi
+
+    if [ -z "$db_matches" ]; then
+        return 1
+    fi
+
+    if echo "$db_matches" | head -n 1 | grep -q 'disabled'; then
+        return 1
+    elif echo "$db_matches" | grep -v 'disabled' | grep -qE '115 (Cloud|Open|网盘(开放平台)?)'; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+install_boot_companion_sync_guard() {
+    local service_d="${SERVICE_D_DIR:-/data/adb/service.d}"
+    local guard_script="$service_d/openlist_companion_sync.sh"
+    mkdir -p "$service_d" 2>/dev/null || true
+    cat > "$guard_script" << EOF
+#!/system/bin/sh
+MODDIR="$MODDIR"
+OPENLIST_BINARY="$OPENLIST_BINARY"
+if [ ! -d "\$MODDIR" ] || [ -f "\$MODDIR/disable" ] || [ -f "\$MODDIR/remove" ]; then
+    if command -v pm >/dev/null 2>&1; then
+        pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+    fi
+    exit 0
 fi
+if ! pgrep -f "\$OPENLIST_BINARY server" >/dev/null 2>&1; then
+    if command -v pm >/dev/null 2>&1; then
+        pm disable io.openlist.helper/io.openlist.helper.ProcessTextActivity >/dev/null 2>&1 || true
+    fi
+fi
+EOF
+    chmod 755 "$guard_script" 2>/dev/null || true
+}
 
-log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
-$OPENLIST_BINARY server --data "$DATA_DIR" &
-OPENLIST_PID=$!
+watch_module_disable_state() {
+    local interval="${WATCH_INTERVAL:-3}"
+    local last_menu_state=""
+    while pgrep -f "$OPENLIST_BINARY server" >/dev/null 2>&1; do
+        if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
+            log "检测到模块已禁用或待移除，正在停止 OpenList 服务并隐藏 115 离线菜单"
+            pkill -f "$OPENLIST_BINARY" 2>/dev/null || true
+            set_companion_menu_enabled 0
+            return 0
+        fi
+        local desired_state="0"
+        if has_enabled_115_storage "${DETECTED_PORT:-5244}"; then
+            desired_state="1"
+        fi
+        if [ "$desired_state" != "$last_menu_state" ]; then
+            set_companion_menu_enabled "$desired_state"
+            last_menu_state="$desired_state"
+        fi
+        sleep "$interval"
+    done
+    set_companion_menu_enabled 0
+}
 
-if ps -p $OPENLIST_PID >/dev/null || pgrep -f "$OPENLIST_BINARY server --data" >/dev/null; then
-    log "OpenList 服务启动成功 (PID: $OPENLIST_PID)"
-    update_module_prop_running
-else
-    log "错误: 无法启动 OpenList 服务"
-    OUTPUT=$($OPENLIST_BINARY server --data "$DATA_DIR" 2>&1)
-    log "手动运行输出: $OUTPUT"
-    exit 1
+sync_companion_apk_and_config() {
+    local target_port="${1:-${DETECTED_PORT:-5244}}"
+    [ -z "$target_port" ] && target_port="5244"
+
+    # 1. 确保伴侣 APK (io.openlist.helper) 已安装
+    local helper_apk="$MODDIR/system/app/OpenListHelper/OpenListHelper.apk"
+    if [ -f "$helper_apk" ] && command -v pm >/dev/null 2>&1; then
+        if ! pm path io.openlist.helper >/dev/null 2>&1; then
+            log "伴侣应用未安装，尝试后台安装: $helper_apk"
+            pm install -r "$helper_apk" >/dev/null 2>&1 || log "警告: pm install 伴侣应用失败"
+        fi
+    fi
+
+    # 2. 确保 $DATA_DIR/offline.conf 存在，若不存在则使用预设配置创建
+    local conf_file="$DATA_DIR/offline.conf"
+    if [ ! -f "$conf_file" ]; then
+        cat > "$conf_file" << 'EOF'
+# OpenList 115 离线下载伴侣配置
+HOST=127.0.0.1
+PORT=5244
+TOKEN=
+PATH=/115/影视/
+TOOL=115 Open
+DELETE_POLICY=delete_on_upload_succeed
+PRESET_PATHS=/115/影视/,/115/
+EOF
+        chmod 644 "$conf_file" 2>/dev/null || true
+    fi
+
+    # 补充缺失的核心配置项（平滑升级，保留用户已有自定义）
+    grep -q '^HOST=' "$conf_file" || echo "HOST=127.0.0.1" >> "$conf_file"
+    grep -q '^PORT=' "$conf_file" || echo "PORT=${target_port}" >> "$conf_file"
+    grep -q '^TOKEN=' "$conf_file" || echo "TOKEN=" >> "$conf_file"
+    grep -q '^PATH=' "$conf_file" || echo "PATH=/115/影视/" >> "$conf_file"
+    grep -q '^TOOL=' "$conf_file" || echo "TOOL=115 Open" >> "$conf_file"
+    grep -q '^DELETE_POLICY=' "$conf_file" || echo "DELETE_POLICY=delete_on_upload_succeed" >> "$conf_file"
+    grep -q '^PRESET_PATHS=' "$conf_file" || echo "PRESET_PATHS=/115/影视/,/115/" >> "$conf_file"
+
+    # 3. 更新 PORT 为当前检测到的运行端口
+    sed -i "s|^PORT=.*|PORT=${target_port}|" "$conf_file"
+
+    # 4. 若 TOKEN 为空或以 string 结尾（历史提取 Bug 导致），从 data.db 提取或清洗并更新
+    local current_token
+    current_token=$(grep -E '^TOKEN=' "$conf_file" | head -n 1 | cut -d'=' -f2- | tr -d '\r' | sed 's/string$//')
+
+    local token_needs_update=0
+    if [ -z "$current_token" ]; then
+        token_needs_update=1
+    elif grep -E '^TOKEN=' "$conf_file" | head -n 1 | tr -d '\r' | grep -qE 'string$'; then
+        token_needs_update=1
+        sed -i "s|^TOKEN=.*|TOKEN=${current_token}|" "$conf_file"
+        log "已从 offline.conf 中清理历史残留的 string 后缀"
+    fi
+
+    if [ "$token_needs_update" -eq 1 ]; then
+        local extracted_token=""
+        local retry_max="${TOKEN_RETRY_MAX:-5}"
+        local retry_count=0
+        while [ "$retry_count" -lt "$retry_max" ]; do
+            extracted_token=$(extract_openlist_token 2>/dev/null || true)
+            [ -n "$extracted_token" ] && break
+            retry_count=$((retry_count + 1))
+            if [ "$retry_count" -lt "$retry_max" ]; then
+                if [ -z "${TOKEN_RETRY_MAX:-}" ]; then
+                    sleep 1
+                fi
+            fi
+        done
+        if [ -n "$extracted_token" ]; then
+            if [ "$extracted_token" != "$current_token" ] || [ -z "$current_token" ]; then
+                sed -i "s|^TOKEN=.*|TOKEN=${extracted_token}|" "$conf_file"
+                log "已自动从 data.db 提取 Token 并更新 offline.conf"
+            fi
+        fi
+    fi
+
+    # 5. 校验 115 存储状态并同步伴侣系统菜单可见性
+    install_boot_companion_sync_guard
+    if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
+        set_companion_menu_enabled 0
+    elif has_enabled_115_storage "$target_port"; then
+        set_companion_menu_enabled 1
+    else
+        log "未检测到已启用的 115 网盘存储，隐藏 115 离线下载系统菜单入口"
+        set_companion_menu_enabled 0
+    fi
+
+    # 6. 桥接 offline.conf 至公共临时目录供免权限读取
+    local bridge_tmp="${BRIDGE_TMP_CONF:-/data/local/tmp/openlist_offline.conf}"
+    cp -f "$conf_file" "$bridge_tmp" 2>/dev/null || true
+    chmod 644 "$bridge_tmp" 2>/dev/null || true
+    chcon u:object_r:shell_data_file:s0 "$bridge_tmp" 2>/dev/null || true
+
+    # 7. 桥接 offline.conf 至伴侣应用私有目录
+    local helper_pkg_dir="${HELPER_DATA_DIR:-/data/data/io.openlist.helper}"
+    if [ -d "$helper_pkg_dir" ]; then
+        local helper_files_dir="$helper_pkg_dir/files"
+        mkdir -p "$helper_files_dir" 2>/dev/null || true
+        cp -f "$conf_file" "$helper_files_dir/offline.conf" 2>/dev/null || true
+        local owner_ug
+        owner_ug=$(stat -c %u:%g "$helper_pkg_dir" 2>/dev/null)
+        if [ -n "$owner_ug" ]; then
+            chown "$owner_ug" "$helper_files_dir" "$helper_files_dir/offline.conf" 2>/dev/null || true
+        fi
+        chmod 700 "$helper_files_dir" 2>/dev/null || true
+        chmod 600 "$helper_files_dir/offline.conf" 2>/dev/null || true
+        restorecon -R "$helper_files_dir" 2>/dev/null || true
+    fi
+}
+
+reload_openlist_storages() {
+    local port="${1:-${DETECTED_PORT:-5244}}"
+    [ -z "$port" ] && port="5244"
+    local conf_file="$DATA_DIR/offline.conf"
+    local token=""
+    if [ -f "$conf_file" ]; then
+        token=$(grep -E '^TOKEN=' "$conf_file" | head -n 1 | cut -d'=' -f2- | tr -d '\r' | sed 's/string$//')
+    fi
+    if [ -z "$token" ]; then
+        token=$(extract_openlist_token 2>/dev/null || true)
+    fi
+
+    if [ -z "$token" ]; then
+        log "提示: 未获取到有效 Token，跳过开机存储自动重载"
+        return 0
+    fi
+
+    local bb
+    bb=$(toast_find_busybox)
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1 && { [ -z "$bb" ] || [ ! -x "$bb" ]; }; then
+        log "提示: 未找到 curl 或 wget，跳过开机存储自动重载"
+        return 0
+    fi
+
+    # 延迟待网络与 DNS 就绪后异步重载全部存储驱动 (例如 115 Open、GoogleDrive 等在开机无网时初始化失败的云存储)
+    (
+        delay="${RELOAD_DELAY:-3}"
+        if [ "$delay" -gt 0 ] 2>/dev/null; then
+            sleep "$delay"
+        fi
+        url="http://127.0.0.1:${port}/api/admin/storage/load_all"
+        if command -v curl >/dev/null 2>&1; then
+            log "已触发 OpenList 存储重载 (POST $url via curl)"
+            curl -s -m 10 -X POST -H "Authorization: ${token}" "$url" >/dev/null 2>&1
+        elif command -v wget >/dev/null 2>&1; then
+            log "已触发 OpenList 存储重载 (POST $url via wget)"
+            wget -q -T 10 -O /dev/null --header="Authorization: ${token}" --post-data="" "$url" >/dev/null 2>&1
+        elif [ -n "$bb" ] && [ -x "$bb" ]; then
+            log "已触发 OpenList 存储重载 (POST $url via busybox wget)"
+            "$bb" wget -q -T 10 -O /dev/null --header="Authorization: ${token}" --post-data="" "$url" >/dev/null 2>&1
+        fi
+    ) </dev/null >/dev/null 2>&1 &
+}
+
+main() {
+    log "启动 service.sh 于 $(date '+%Y-%m-%d %H:%M:%S')"
+
+    if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
+        log "检测到模块已禁用或待移除，跳过启动并隐藏 115 离线菜单"
+        set_companion_menu_enabled 0
+        exit 0
+    fi
+
+    if ! command -v ip >/dev/null; then
+        log "错误: 未找到 ip 命令"
+        set_companion_menu_enabled 0
+        exit 1
+    fi
+
+    if [ ! -f "$OPENLIST_BINARY" ]; then
+        log "错误: $OPENLIST_BINARY 不存在"
+        set_companion_menu_enabled 0
+        exit 1
+    fi
+    if [ ! -x "$OPENLIST_BINARY" ]; then
+        log "警告: $OPENLIST_BINARY 不可执行，尝试修复"
+        chmod 755 "$OPENLIST_BINARY" 2>/dev/null || {
+            log "错误: 无法设置 $OPENLIST_BINARY 的执行权限"
+            set_companion_menu_enabled 0
+            exit 1
+        }
+    fi
+
+    mkdir -p "$DATA_DIR" 2>/dev/null
+    if [ $? -ne 0 ]; then
+        log "错误: 无法创建数据目录 $DATA_DIR"
+        set_companion_menu_enabled 0
+        exit 1
+    fi
+    if [ ! -w "$DATA_DIR" ]; then
+        log "警告: 数据目录 $DATA_DIR 不可写，尝试修复权限"
+        chmod 777 "$DATA_DIR" 2>/dev/null || {
+            log "错误: 无法设置 $DATA_DIR 的写权限"
+            set_companion_menu_enabled 0
+            exit 1
+        }
+    fi
+    log "已创建或验证数据目录：$DATA_DIR"
+
+    ELAPSED=0
+    MAX_WAIT=60
+    while [ $ELAPSED -lt $MAX_WAIT ]; do
+        if [ "$(getprop sys.boot_completed)" = "1" ]; then
+            log "Android 系统启动完成"
+            break
+        fi
+        log "等待 Android 系统启动... ($ELAPSED/$MAX_WAIT 秒)"
+        sleep 1
+        ELAPSED=$((ELAPSED + 1))
+    done
+
+    if [ $ELAPSED -ge $MAX_WAIT ]; then
+        log "警告: 系统启动超时，继续尝试启动 openlist"
+    fi
+
+    log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
+    $OPENLIST_BINARY server --data "$DATA_DIR" </dev/null >/dev/null 2>&1 &
+    OPENLIST_PID=$!
+
+    if ps -p $OPENLIST_PID >/dev/null || pgrep -f "$OPENLIST_BINARY server --data" >/dev/null; then
+        log "OpenList 服务启动成功 (PID: $OPENLIST_PID)"
+        update_module_prop_running
+        sync_companion_apk_and_config "$DETECTED_PORT"
+        reload_openlist_storages "$DETECTED_PORT"
+        if [ "${ENABLE_DISABLE_WATCHER:-1}" = "1" ]; then
+            watch_module_disable_state </dev/null >/dev/null 2>&1 &
+        fi
+    else
+        log "错误: 无法启动 OpenList 服务"
+        set_companion_menu_enabled 0
+        OUTPUT=$($OPENLIST_BINARY server --data "$DATA_DIR" 2>&1)
+        log "手动运行输出: $OUTPUT"
+        exit 1
+    fi
+}
+
+if [ "${0##*/}" = "service.sh" ]; then
+    main "$@"
 fi
