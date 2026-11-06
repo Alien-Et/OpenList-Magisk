@@ -1,17 +1,17 @@
 # Graph Report - openlist  (2026-11-06)
 
 ## Corpus Check
-- 23 files · ~22,606 words
+- 23 files · ~22,756 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 8 file(s) not represented in the graph (top: (none) 4, .prop 1, .apk 1)
 
 ## Summary
-- 291 nodes · 511 edges · 19 communities (15 shown, 4 thin omitted)
+- 291 nodes · 513 edges · 19 communities (15 shown, 4 thin omitted)
 - Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 28 edges (avg confidence: 0.91)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `88d29880`
+- Built from commit: `34f1ebeb`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -85,7 +85,7 @@ Cohesion: 0.17
 Nodes (3): ApiResult, DirListResult, OfflineHelperCore
 
 ### Community 5 - "Daemon Service & Token Bridge"
-Cohesion: 0.38
+Cohesion: 0.40
 Nodes (14): extract_openlist_token(), get_lan_ip(), get_port(), has_enabled_115_storage(), install_boot_companion_sync_guard(), log(), main(), reload_openlist_storages() (+6 more)
 
 ### Community 6 - "Module Full Uninstallation"

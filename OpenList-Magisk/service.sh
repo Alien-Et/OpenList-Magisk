@@ -278,13 +278,17 @@ has_enabled_115_storage() {
     if [ -n "$token" ]; then
         local resp=""
         local api_url="http://127.0.0.1:${port}/api/admin/storage/list"
+        local bb
+        bb=$(toast_find_busybox)
         if command -v curl >/dev/null 2>&1; then
             resp=$(curl -s -m 2 -H "Authorization: ${token}" "$api_url" 2>/dev/null || true)
         elif command -v wget >/dev/null 2>&1; then
             resp=$(wget -q -T 2 -O - --header="Authorization: ${token}" "$api_url" 2>/dev/null || true)
+        elif [ -n "$bb" ] && [ -x "$bb" ]; then
+            resp=$("$bb" wget -q -T 2 -O - --header="Authorization: ${token}" "$api_url" 2>/dev/null || true)
         fi
         if [ -n "$resp" ] && echo "$resp" | grep -qE '"code"[[:space:]]*:[[:space:]]*200'; then
-            if echo "$resp" | sed 's/{"id":/\n{"id":/g' | grep -E '"driver"[[:space:]]*:[[:space:]]*"115( Cloud| Open)?"' | grep -qE '"disabled"[[:space:]]*:[[:space:]]*false'; then
+            if echo "$resp" | sed 's/{"id":/\n{"id":/g' | grep -E '"driver"[[:space:]]*:[[:space:]]*"115( Cloud| Open| 网盘(开放平台)?)?"' | grep -qE '"disabled"[[:space:]]*:[[:space:]]*false'; then
                 return 0
             else
                 return 1
@@ -296,7 +300,7 @@ has_enabled_115_storage() {
     local db_file="$DATA_DIR/data.db"
     if [ -f "$db_file" ] && command -v sqlite3 >/dev/null 2>&1; then
         local sql_count
-        if sql_count=$(sqlite3 "$db_file" "SELECT COUNT(*) FROM x_storages WHERE driver IN ('115 Cloud', '115 Open', '115') AND (disabled = 0 OR disabled = '0' OR disabled = 'false' OR disabled IS NULL);" 2>/dev/null); then
+        if sql_count=$(sqlite3 "$db_file" "SELECT COUNT(*) FROM x_storages WHERE driver IN ('115 Cloud', '115 Open', '115', '115 网盘开放平台', '115 网盘') AND (disabled = 0 OR disabled = '0' OR disabled = 'false' OR disabled IS NULL);" 2>/dev/null); then
             sql_count=$(echo "$sql_count" | tr -d '[:space:]')
             if [ -n "$sql_count" ]; then
                 if [ "$sql_count" -gt 0 ] 2>/dev/null; then
@@ -312,11 +316,11 @@ has_enabled_115_storage() {
     local wal_file="${db_file}-wal"
     if [ -f "$wal_file" ] && [ -s "$wal_file" ]; then
         local wal_matches
-        wal_matches=$(grep -aoE '115 (Cloud|Open).{0,24}' "$wal_file" 2>/dev/null | tr -cd '[:print:]\n' || true)
+        wal_matches=$(grep -aoE '115 (Cloud|Open|网盘(开放平台)?).{0,24}' "$wal_file" 2>/dev/null | tr -cd '[:print:]\n' || true)
         if [ -n "$wal_matches" ]; then
             local last_wal
             last_wal=$(echo "$wal_matches" | tail -n 1)
-            if echo "$last_wal" | grep -q 'disabled'; then
+            if echo "$last_wal" | grep -q 'disabled' || echo "$wal_matches" | grep -q 'disabled'; then
                 return 1
             else
                 return 0
@@ -329,19 +333,21 @@ has_enabled_115_storage() {
     fi
 
     local db_matches
-    db_matches=$(grep -aoE '115 (Cloud|Open).{0,24}' "$db_file" 2>/dev/null | tr -cd '[:print:]\n' || true)
+    db_matches=$(grep -aoE '115 (Cloud|Open|网盘(开放平台)?).{0,24}' "$db_file" 2>/dev/null | tr -cd '[:print:]\n' || true)
     if [ -z "$db_matches" ] && command -v strings >/dev/null 2>&1; then
-        db_matches=$(strings "$db_file" 2>/dev/null | grep -E '115 (Cloud|Open).{0,24}' | tr -cd '[:print:]\n' || true)
+        db_matches=$(strings "$db_file" 2>/dev/null | grep -E '115 (Cloud|Open|网盘(开放平台)?).{0,24}' | tr -cd '[:print:]\n' || true)
     fi
     if [ -z "$db_matches" ]; then
-        db_matches=$(tr -cd '[:print:]\n' < "$db_file" 2>/dev/null | grep -aoE '115 (Cloud|Open).{0,24}' || true)
+        db_matches=$(tr -cd '[:print:]\n' < "$db_file" 2>/dev/null | grep -aoE '115 (Cloud|Open|网盘(开放平台)?).{0,24}' || true)
     fi
 
     if [ -z "$db_matches" ]; then
         return 1
     fi
 
-    if echo "$db_matches" | grep -v 'disabled' | grep -qE '115 (Cloud|Open)'; then
+    if echo "$db_matches" | head -n 1 | grep -q 'disabled'; then
+        return 1
+    elif echo "$db_matches" | grep -v 'disabled' | grep -qE '115 (Cloud|Open|网盘(开放平台)?)'; then
         return 0
     else
         return 1
@@ -521,7 +527,9 @@ reload_openlist_storages() {
         return 0
     fi
 
-    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    local bb
+    bb=$(toast_find_busybox)
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1 && { [ -z "$bb" ] || [ ! -x "$bb" ]; }; then
         log "提示: 未找到 curl 或 wget，跳过开机存储自动重载"
         return 0
     fi
@@ -539,6 +547,9 @@ reload_openlist_storages() {
         elif command -v wget >/dev/null 2>&1; then
             log "已触发 OpenList 存储重载 (POST $url via wget)"
             wget -q -T 10 -O /dev/null --header="Authorization: ${token}" --post-data="" "$url" >/dev/null 2>&1
+        elif [ -n "$bb" ] && [ -x "$bb" ]; then
+            log "已触发 OpenList 存储重载 (POST $url via busybox wget)"
+            "$bb" wget -q -T 10 -O /dev/null --header="Authorization: ${token}" --post-data="" "$url" >/dev/null 2>&1
         fi
     ) </dev/null >/dev/null 2>&1 &
 }

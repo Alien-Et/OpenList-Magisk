@@ -623,6 +623,20 @@ else
     FAILED=$((FAILED + 1))
 fi
 
+TOTAL=$((TOTAL + 1))
+RET=0
+(
+    export PATH="$MOCK_HTTP_DIR:$PATH"
+    export MOCK_STORAGE_RESPONSE='{"code":200,"message":"success","data":{"content":[{"id":1,"mount_path":"/本地存储","driver":"Local","disabled":false},{"id":2,"mount_path":"/115","driver":"115 网盘开放平台","status":"work","disabled":false},{"id":3,"mount_path":"/Google","driver":"GoogleDrive","disabled":false},{"id":4,"mount_path":"/quark","driver":"Quark Open","disabled":false}]}}'
+    has_enabled_115_storage "5244"
+) || RET=$?
+if [ "$RET" -eq 0 ]; then
+    echo "  [PASS] HTTP API 115 网盘开放平台启用时 has_enabled_115_storage 返回 0"
+else
+    echo "  [FAIL] HTTP API 115 网盘开放平台启用时 has_enabled_115_storage 未返回 0"
+    FAILED=$((FAILED + 1))
+fi
+
 # 17e: watch_module_disable_state 在运行期动态根据 115 存储切换菜单可见性
 touch "$FAKE_RUNNING"
 : > "$PM_LOG"
