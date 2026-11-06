@@ -303,6 +303,7 @@ export SERVICE_D_DIR="$TEST_TMP/service.d"
 
 # 正常未禁用状态
 rm -f "$MOCK_MODDIR/disable" "$MOCK_MODDIR/remove"
+printf "\x00\x01/115115 Cloud\x1ework{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
 : > "$PM_LOG"
 sync_companion_apk_and_config "5244"
 assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "模块未禁用时 sync_companion_apk_and_config 启用系统菜单"
@@ -482,6 +483,7 @@ done
 EOF
 chmod +x "$ACTION_TEST_DIR/bin/openlist"
 
+printf "\x00\x01/115115 Cloud\x1ework{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
 rm -f "$FAKE_RUNNING"
 : > "$PM_LOG"
 export ENABLE_DISABLE_WATCHER=1
@@ -665,6 +667,128 @@ assert_file_contains "$MOCK_CONFIG" '"force"[[:space:]]*:[[:space:]]*false' "opt
 # 幂等性检测
 optimize_openlist_config "$MOCK_CONFIG"
 assert_file_contains "$MOCK_CONFIG" '"max_size"[[:space:]]*:[[:space:]]*10' "二次执行 optimize_openlist_config 保持 max_size=10 幂等"
+
+# -------------------------------------------------------------
+# 测试 20: has_enabled_115_storage 检测网盘状态与菜单可见性强绑定
+# -------------------------------------------------------------
+echo ""
+echo "-> 测试 20: has_enabled_115_storage 存储状态校验与系统菜单可见性联动"
+
+# 20a: data.db 无 115 网盘存储（仅本地存储）
+printf "\x00\x01/localLocal\x1ework{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
+rm -f "$DATA_DIR/data.db-wal"
+: > "$PM_LOG"
+TOTAL=$((TOTAL + 1))
+if ! has_enabled_115_storage "5244"; then
+    echo "  [PASS] data.db 无 115 存储时 has_enabled_115_storage 返回非 0"
+else
+    echo "  [FAIL] data.db 无 115 存储时 has_enabled_115_storage 未返回非 0"
+    FAILED=$((FAILED + 1))
+fi
+sync_companion_apk_and_config "5244"
+assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "data.db 无 115 存储时 sync_companion_apk_and_config 禁用系统菜单"
+
+# 20b: data.db 含有 115 存储但处于 disabled 状态
+printf "\x00\x01/115115 Cloud\x1edisabled{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
+rm -f "$DATA_DIR/data.db-wal"
+: > "$PM_LOG"
+TOTAL=$((TOTAL + 1))
+if ! has_enabled_115_storage "5244"; then
+    echo "  [PASS] data.db 115 存储禁用时 has_enabled_115_storage 返回非 0"
+else
+    echo "  [FAIL] data.db 115 存储禁用时 has_enabled_115_storage 未返回非 0"
+    FAILED=$((FAILED + 1))
+fi
+sync_companion_apk_and_config "5244"
+assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "data.db 115 存储禁用时 sync_companion_apk_and_config 禁用系统菜单"
+
+# 20c: data.db 含有已启用的 115 存储
+printf "\x00\x01/115115 Open\x1ework{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
+rm -f "$DATA_DIR/data.db-wal"
+: > "$PM_LOG"
+TOTAL=$((TOTAL + 1))
+if has_enabled_115_storage "5244"; then
+    echo "  [PASS] data.db 含有已启用 115 存储时 has_enabled_115_storage 返回 0"
+else
+    echo "  [FAIL] data.db 含有已启用 115 存储时 has_enabled_115_storage 未返回 0"
+    FAILED=$((FAILED + 1))
+fi
+sync_companion_apk_and_config "5244"
+assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "data.db 含有已启用 115 存储时 sync_companion_apk_and_config 启用系统菜单"
+
+# 20d: Live HTTP API /api/admin/storage/list 接口模拟测试 (Tier 1)
+MOCK_HTTP_DIR="$TEST_TMP/mock_http_bin"
+mkdir -p "$MOCK_HTTP_DIR"
+cat > "$MOCK_HTTP_DIR/curl" << 'EOF'
+#!/usr/bin/env bash
+if [ -n "$MOCK_STORAGE_RESPONSE" ]; then
+    echo "$MOCK_STORAGE_RESPONSE"
+    exit 0
+fi
+exit 1
+EOF
+chmod +x "$MOCK_HTTP_DIR/curl"
+
+TOTAL=$((TOTAL + 1))
+RET=0
+(
+    export PATH="$MOCK_HTTP_DIR:$PATH"
+    export MOCK_STORAGE_RESPONSE='{"code":200,"message":"success","data":{"content":[{"id":1,"driver":"Local","disabled":false}]}}'
+    has_enabled_115_storage "5244"
+) || RET=$?
+if [ "$RET" -ne 0 ]; then
+    echo "  [PASS] HTTP API 无 115 存储时 has_enabled_115_storage 返回非 0"
+else
+    echo "  [FAIL] HTTP API 无 115 存储时 has_enabled_115_storage 未返回非 0"
+    FAILED=$((FAILED + 1))
+fi
+
+TOTAL=$((TOTAL + 1))
+RET=0
+(
+    export PATH="$MOCK_HTTP_DIR:$PATH"
+    export MOCK_STORAGE_RESPONSE='{"code":200,"message":"success","data":{"content":[{"id":1,"driver":"115 Open","disabled":true}]}}'
+    has_enabled_115_storage "5244"
+) || RET=$?
+if [ "$RET" -ne 0 ]; then
+    echo "  [PASS] HTTP API 115 存储禁用时 has_enabled_115_storage 返回非 0"
+else
+    echo "  [FAIL] HTTP API 115 存储禁用时 has_enabled_115_storage 未返回非 0"
+    FAILED=$((FAILED + 1))
+fi
+
+TOTAL=$((TOTAL + 1))
+RET=0
+(
+    export PATH="$MOCK_HTTP_DIR:$PATH"
+    export MOCK_STORAGE_RESPONSE='{"code":200,"message":"success","data":{"content":[{"id":1,"driver":"115 Cloud","disabled":false}]}}'
+    has_enabled_115_storage "5244"
+) || RET=$?
+if [ "$RET" -eq 0 ]; then
+    echo "  [PASS] HTTP API 115 存储已启用时 has_enabled_115_storage 返回 0"
+else
+    echo "  [FAIL] HTTP API 115 存储已启用时 has_enabled_115_storage 未返回 0"
+    FAILED=$((FAILED + 1))
+fi
+
+# 20e: watch_module_disable_state 在运行期动态根据 115 存储切换菜单可见性
+touch "$FAKE_RUNNING"
+: > "$PM_LOG"
+printf "\x00\x01/115115 Open\x1ework{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
+WATCH_INTERVAL=0.1 watch_module_disable_state &
+WATCH_PID=$!
+sleep 0.3
+# 动态切换为禁用
+printf "\x00\x01/115115 Open\x1edisabled{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
+sleep 0.3
+# 动态切换回启用
+printf "\x00\x01/115115 Open\x1ework{}\x00token%sstring\x00" "$CLEANED_TOKEN" > "$DATA_DIR/data.db"
+sleep 0.3
+# 终止循环
+rm -f "$FAKE_RUNNING"
+wait "$WATCH_PID" 2>/dev/null || true
+assert_file_contains "$PM_LOG" "^enable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "watch_module_disable_state 运行时检测到 115 存储启用调用 pm enable"
+assert_file_contains "$PM_LOG" "^disable io\.openlist\.helper/io\.openlist\.helper\.ProcessTextActivity$" "watch_module_disable_state 运行时检测到 115 存储禁用动态调用 pm disable"
 
 # -------------------------------------------------------------
 # 测试汇总报告

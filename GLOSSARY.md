@@ -45,7 +45,7 @@ _Avoid_: 下载器, 插件名
 _Avoid_: 数据库配置, 环境变量
 
 **Companion Menu Visibility（伴侣菜单可见性）**:
-伴侣应用三个系统级触发入口（`PROCESS_TEXT` 划词菜单、`SEND` 分享菜单、`VIEW` 磁力链接拦截）在 Android 系统中的启用与隐藏状态，与 OpenList Daemon 的在线存活状态及模块启用状态强绑定。
+伴侣应用三个系统级触发入口（`PROCESS_TEXT` 划词菜单、`SEND` 分享菜单、`VIEW` 磁力链接拦截）在 Android 系统中的启用与隐藏状态，与 OpenList Daemon 的在线存活状态、模块启用状态以及 115 网盘存储（`115 Cloud` / `115 Open`）的添加与启用状态强绑定（未添加 115 存储或所有 115 存储处于禁用时自动隐藏）。
 _Avoid_: 卸载应用, 杀后台
 
 **SQLite Concurrency Self-Healing（SQLite 并发锁自愈）**:

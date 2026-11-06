@@ -1,22 +1,22 @@
-# Graph Report - openlist  (2026-11-04)
+# Graph Report - openlist  (2026-11-06)
 
 ## Corpus Check
-- 24 files · ~22,650 words
+- 25 files · ~24,912 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 8 file(s) not represented in the graph (top: (none) 4, .prop 1, .apk 1)
 
 ## Summary
-- 304 nodes · 529 edges · 18 communities (15 shown, 3 thin omitted)
+- 314 nodes · 541 edges · 18 communities (15 shown, 3 thin omitted)
 - Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 29 edges (avg confidence: 0.92)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `95c70a70`
+- Built from commit: `9fb90d22`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- Implementation Plan: SQLite Concurrency Self-Healing & Log Rotation Tuning
+- Implementation Plan: 115 Storage Menu Visibility Gate & Revert SQLite WAL Patch from Upstream PR
 - HTTP Networking & Data Models
 - Domain Concepts & CI Pipeline
 - Offline Helper Core Unit Tests
@@ -30,7 +30,7 @@
 - Action Toggle Service Controller
 - CLAUDE.md
 - steps
-- Implementation Plan: Companion Menu Visibility Lifecycle Sync
+- .main
 - Implementation Plan: Interactive Folder Picker in Offline Confirm Sheet
 - ProcessTextActivity
 
@@ -42,8 +42,8 @@
 5. `log()` - 12 edges
 6. `main()` - 11 edges
 7. `steps` - 7 edges
-8. `main()` - 7 edges
-9. `sync_companion_apk_and_config()` - 6 edges
+8. `sync_companion_apk_and_config()` - 7 edges
+9. `main()` - 7 edges
 10. `main()` - 6 edges
 
 ## Surprising Connections (you probably didn't know these)
@@ -68,25 +68,25 @@
 
 ## Communities (18 total, 3 thin omitted)
 
-### Community 0 - "Implementation Plan: SQLite Concurrency Self-Healing & Log Rotation Tuning"
-Cohesion: 0.25
-Nodes (7): Files Owned, Files Owned, Implementation Plan: SQLite Concurrency Self-Healing & Log Rotation Tuning, Requirements, Spec & Global Constraints, Task 1: Implement SQLite WAL Header Persistence, Binary Busy-Timeout Patch, and Config Log Tuning in `service.sh` + Unit Tests, Task 2: Author ADR 0002 & Update Project Documentation
+### Community 0 - "Implementation Plan: 115 Storage Menu Visibility Gate & Revert SQLite WAL Patch from Upstream PR"
+Cohesion: 0.22
+Nodes (8): Files Owned, Files Owned, Implementation Plan: 115 Storage Menu Visibility Gate & Revert SQLite WAL Patch from Upstream PR, Requirements, Requirements, Spec & Global Constraints, Task 1: Gate Companion Menu Visibility on Added & Enabled 115 Storage, Task 2: Revert SQLite WAL Concurrency Self-Healing & Log Tuning (ADR 0002) from Upstream PR Branch
 
 ### Community 2 - "Domain Concepts & CI Pipeline"
 Cohesion: 0.07
 Nodes (30): ADR 0001: Companion APK PROCESS_TEXT Offline Download, 1. SQLite 头部持久化 WAL 模式强固（Persistent WAL Header Enforcement）, 2. 二进制 35 字节原位 DSN 补丁（In-Place 35-Byte Binary DSN Patch）, 3. 日志过滤开启与轮转瘦身调优（Log Filter & Rotation Tuning）, SQLite 并发锁自愈（WAL 与 Busy Timeout 补丁）及日志轮转调优, 决策方案（Decision）, 备选方案权衡（Considered Options）, 影响与收益（Consequences） (+22 more)
 
 ### Community 3 - "Offline Helper Core Unit Tests"
-Cohesion: 0.12
-Nodes (6): MatchCandidate, TextSpan, OfflineHelperCoreTest, TestCase, Requirements, Requirements
+Cohesion: 0.15
+Nodes (4): MatchCandidate, TextSpan, OfflineHelperCoreTest, Requirements
 
 ### Community 4 - "Magnet Parsing & Config Core"
-Cohesion: 0.16
-Nodes (3): ApiResult, DirListResult, OfflineHelperCore
+Cohesion: 0.18
+Nodes (4): ApiResult, DirListResult, OfflineConfig, OfflineHelperCore
 
 ### Community 5 - "Daemon Service & Token Bridge"
-Cohesion: 0.33
-Nodes (16): ensure_sqlite_wal_and_clean_locks(), extract_openlist_token(), get_lan_ip(), get_port(), install_boot_companion_sync_guard(), log(), main(), optimize_openlist_config() (+8 more)
+Cohesion: 0.32
+Nodes (17): ensure_sqlite_wal_and_clean_locks(), extract_openlist_token(), get_lan_ip(), get_port(), has_enabled_115_storage(), install_boot_companion_sync_guard(), log(), main() (+9 more)
 
 ### Community 6 - "Module Full Uninstallation"
 Cohesion: 0.61
@@ -116,9 +116,9 @@ Nodes (5): check_openlist_status(), find_busybox(), set_companion_menu_enabled()
 Cohesion: 0.08
 Nodes (23): runs-on, steps, API_URL, GITHUB_TOKEN, jobs, build, name, on (+15 more)
 
-### Community 15 - "Implementation Plan: Companion Menu Visibility Lifecycle Sync"
-Cohesion: 0.22
-Nodes (8): Files Owned, Files Owned, Implementation Plan: Companion Menu Visibility Lifecycle Sync, Requirements, Requirements, Spec & Global Constraints, Task 1: Default-disable ProcessTextActivity in Companion APK Manifest and add unit tests, Task 2: Sync Companion Menu Visibility across service.sh, action.sh, customize.sh, uninstall.sh and tests
+### Community 15 - ".main"
+Cohesion: 0.09
+Nodes (17): TestCase, Files Owned, Files Owned, Implementation Plan: Companion Menu Visibility Lifecycle Sync, Requirements, Requirements, Spec & Global Constraints, Task 1: Default-disable ProcessTextActivity in Companion APK Manifest and add unit tests (+9 more)
 
 ### Community 16 - "Implementation Plan: Interactive Folder Picker in Offline Confirm Sheet"
 Cohesion: 0.25
@@ -126,26 +126,26 @@ Nodes (7): Files Owned, Files Owned, Implementation Plan: Interactive Folder Pic
 
 ### Community 17 - "ProcessTextActivity"
 Cohesion: 0.06
-Nodes (10): OfflineConfig, ProcessTextActivity, Files Owned, Files Owned, Implementation Plan: Post-Offline Directory Cache Refresh & Folder Picker Force Refresh, Requirements, Requirements, Spec & Global Constraints (+2 more)
+Nodes (9): ProcessTextActivity, Files Owned, Files Owned, Implementation Plan: Post-Offline Directory Cache Refresh & Folder Picker Force Refresh, Requirements, Requirements, Spec & Global Constraints, Task 1: Support `refresh` flag in `OfflineHelperCore` directory listing & post-offline cache refresh (+1 more)
 
 ## Knowledge Gaps
 - **19 isolated node(s):** `DATA_DIR`, `LOG_FILE`, `BRIDGE_TMP_CONF`, `HELPER_DATA_DIR`, `PATH` (+14 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 98 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 104 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `OfflineHelperCoreTest` connect `Offline Helper Core Unit Tests` to `HTTP Networking & Data Models`, `Magnet Parsing & Config Core`, `Implementation Plan: Companion Menu Visibility Lifecycle Sync`?**
-  _High betweenness centrality (0.103) - this node is a cross-community bridge._
+- **Why does `OfflineHelperCoreTest` connect `Offline Helper Core Unit Tests` to `HTTP Networking & Data Models`, `.main`?**
+  _High betweenness centrality (0.097) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `OfflineHelperCoreTest` (e.g. with `Requirements` and `Requirements`) actually correct?**
   _`OfflineHelperCoreTest` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `DATA_DIR`, `LOG_FILE`, `BRIDGE_TMP_CONF` to the rest of the system?**
   _19 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `HTTP Networking & Data Models` be split into smaller, more focused modules?**
   _Cohesion score 0.07741935483870968 - nodes in this community are weakly interconnected._
-- **Why does `ProcessTextActivity` connect `ProcessTextActivity` to `Implementation Plan: Companion Menu Visibility Lifecycle Sync`?**
-  _High betweenness centrality (0.063) - this node is a cross-community bridge._
+- **Why does `ProcessTextActivity` connect `ProcessTextActivity` to `.main`?**
+  _High betweenness centrality (0.059) - this node is a cross-community bridge._
 - **Are the 3 inferred relationships involving `ProcessTextActivity` (e.g. with `Spec & Global Constraints` and `Spec & Global Constraints`) actually correct?**
   _`ProcessTextActivity` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **Should `Domain Concepts & CI Pipeline` be split into smaller, more focused modules?**

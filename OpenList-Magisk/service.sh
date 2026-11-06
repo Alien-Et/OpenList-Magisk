@@ -334,6 +334,93 @@ set_companion_menu_enabled() {
     fi
 }
 
+has_enabled_115_storage() {
+    local port="${1:-${DETECTED_PORT:-5244}}"
+    [ -z "$port" ] && port="5244"
+
+    # Tier 1: Live HTTP API /api/admin/storage/list
+    local conf_file="$DATA_DIR/offline.conf"
+    local token=""
+    if [ -f "$conf_file" ]; then
+        token=$(grep -E '^TOKEN=' "$conf_file" | head -n 1 | cut -d'=' -f2- | tr -d '\r' | sed 's/string$//')
+    fi
+    if [ -z "$token" ]; then
+        token=$(extract_openlist_token 2>/dev/null || true)
+    fi
+
+    if [ -n "$token" ]; then
+        local resp=""
+        local api_url="http://127.0.0.1:${port}/api/admin/storage/list"
+        if command -v curl >/dev/null 2>&1; then
+            resp=$(curl -s -m 2 -H "Authorization: ${token}" "$api_url" 2>/dev/null || true)
+        elif command -v wget >/dev/null 2>&1; then
+            resp=$(wget -q -T 2 -O - --header="Authorization: ${token}" "$api_url" 2>/dev/null || true)
+        fi
+        if [ -n "$resp" ] && echo "$resp" | grep -qE '"code"[[:space:]]*:[[:space:]]*200'; then
+            if echo "$resp" | sed 's/{"id":/\n{"id":/g' | grep -E '"driver"[[:space:]]*:[[:space:]]*"115( Cloud| Open)?"' | grep -qE '"disabled"[[:space:]]*:[[:space:]]*false'; then
+                return 0
+            else
+                return 1
+            fi
+        fi
+    fi
+
+    # Tier 2: sqlite3 CLI on $DATA_DIR/data.db
+    local db_file="$DATA_DIR/data.db"
+    if [ -f "$db_file" ] && command -v sqlite3 >/dev/null 2>&1; then
+        local sql_count
+        if sql_count=$(sqlite3 "$db_file" "SELECT COUNT(*) FROM x_storages WHERE driver IN ('115 Cloud', '115 Open', '115') AND (disabled = 0 OR disabled = '0' OR disabled = 'false' OR disabled IS NULL);" 2>/dev/null); then
+            sql_count=$(echo "$sql_count" | tr -d '[:space:]')
+            if [ -n "$sql_count" ]; then
+                if [ "$sql_count" -gt 0 ] 2>/dev/null; then
+                    return 0
+                else
+                    return 1
+                fi
+            fi
+        fi
+    fi
+
+    # Tier 3: Pure binary/string fallback on ${db_file}-wal and $db_file
+    local wal_file="${db_file}-wal"
+    if [ -f "$wal_file" ] && [ -s "$wal_file" ]; then
+        local wal_matches
+        wal_matches=$(grep -aoE '115 (Cloud|Open).{0,24}' "$wal_file" 2>/dev/null | tr -cd '[:print:]\n' || true)
+        if [ -n "$wal_matches" ]; then
+            local last_wal
+            last_wal=$(echo "$wal_matches" | tail -n 1)
+            if echo "$last_wal" | grep -q 'disabled'; then
+                return 1
+            else
+                return 0
+            fi
+        fi
+    fi
+
+    if [ ! -f "$db_file" ]; then
+        return 1
+    fi
+
+    local db_matches
+    db_matches=$(grep -aoE '115 (Cloud|Open).{0,24}' "$db_file" 2>/dev/null | tr -cd '[:print:]\n' || true)
+    if [ -z "$db_matches" ] && command -v strings >/dev/null 2>&1; then
+        db_matches=$(strings "$db_file" 2>/dev/null | grep -E '115 (Cloud|Open).{0,24}' | tr -cd '[:print:]\n' || true)
+    fi
+    if [ -z "$db_matches" ]; then
+        db_matches=$(tr -cd '[:print:]\n' < "$db_file" 2>/dev/null | grep -aoE '115 (Cloud|Open).{0,24}' || true)
+    fi
+
+    if [ -z "$db_matches" ]; then
+        return 1
+    fi
+
+    if echo "$db_matches" | grep -v 'disabled' | grep -qE '115 (Cloud|Open)'; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 install_boot_companion_sync_guard() {
     local service_d="${SERVICE_D_DIR:-/data/adb/service.d}"
     local guard_script="$service_d/openlist_companion_sync.sh"
@@ -359,12 +446,21 @@ EOF
 
 watch_module_disable_state() {
     local interval="${WATCH_INTERVAL:-3}"
+    local last_menu_state=""
     while pgrep -f "$OPENLIST_BINARY server" >/dev/null 2>&1; do
         if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
             log "检测到模块已禁用或待移除，正在停止 OpenList 服务并隐藏 115 离线菜单"
             pkill -f "$OPENLIST_BINARY" 2>/dev/null || true
             set_companion_menu_enabled 0
             return 0
+        fi
+        local desired_state="0"
+        if has_enabled_115_storage "${DETECTED_PORT:-5244}"; then
+            desired_state="1"
+        fi
+        if [ "$desired_state" != "$last_menu_state" ]; then
+            set_companion_menu_enabled "$desired_state"
+            last_menu_state="$desired_state"
         fi
         sleep "$interval"
     done
@@ -382,13 +478,6 @@ sync_companion_apk_and_config() {
             log "伴侣应用未安装，尝试后台安装: $helper_apk"
             pm install -r "$helper_apk" >/dev/null 2>&1 || log "警告: pm install 伴侣应用失败"
         fi
-    fi
-
-    install_boot_companion_sync_guard
-    if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
-        set_companion_menu_enabled 0
-    else
-        set_companion_menu_enabled 1
     fi
 
     # 2. 确保 $DATA_DIR/offline.conf 存在，若不存在则使用预设配置创建
@@ -454,13 +543,24 @@ EOF
         fi
     fi
 
-    # 5. 桥接 offline.conf 至公共临时目录供免权限读取
+    # 5. 校验 115 存储状态并同步伴侣系统菜单可见性
+    install_boot_companion_sync_guard
+    if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
+        set_companion_menu_enabled 0
+    elif has_enabled_115_storage "$target_port"; then
+        set_companion_menu_enabled 1
+    else
+        log "未检测到已启用的 115 网盘存储，隐藏 115 离线下载系统菜单入口"
+        set_companion_menu_enabled 0
+    fi
+
+    # 6. 桥接 offline.conf 至公共临时目录供免权限读取
     local bridge_tmp="${BRIDGE_TMP_CONF:-/data/local/tmp/openlist_offline.conf}"
     cp -f "$conf_file" "$bridge_tmp" 2>/dev/null || true
     chmod 644 "$bridge_tmp" 2>/dev/null || true
     chcon u:object_r:shell_data_file:s0 "$bridge_tmp" 2>/dev/null || true
 
-    # 6. 桥接 offline.conf 至伴侣应用私有目录
+    # 7. 桥接 offline.conf 至伴侣应用私有目录
     local helper_pkg_dir="${HELPER_DATA_DIR:-/data/data/io.openlist.helper}"
     if [ -d "$helper_pkg_dir" ]; then
         local helper_files_dir="$helper_pkg_dir/files"

@@ -80,7 +80,9 @@ else
         sh "$SERVICE_SH"
         sleep 1  # 等待服务启动
         if check_openlist_status; then
-            set_companion_menu_enabled 1
+            if ! grep -q "sync_companion_apk_and_config" "$SERVICE_SH" 2>/dev/null; then
+                set_companion_menu_enabled 1
+            fi
             echo "✅ 启动成功"
         else
             set_companion_menu_enabled 0
