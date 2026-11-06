@@ -46,4 +46,3 @@ updater-script text eol=lf
 *.rpp text eol=lf
 *.rxx text eol=lf
 *.r++ text eol=lf
-graphify-out/graph.json merge=graphify

@@ -2,6 +2,4 @@
 *.tar.gz
 temp_bins/
 .claude/
-graphify-out/.graphify_*
-graphify-out/cache/
-graphify-out/20*
+graphify-out/
