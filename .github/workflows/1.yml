@@ -231,6 +231,17 @@ jobs:
           git commit -m "更新模块到 OpenList ${{ env.OPENLIST_VERSION }}" || echo "无更改需要提交"
           git push origin main
 
+      # 运行模块脚本单元测试
+      - name: 运行模块脚本单元测试
+        run: |
+          bash tests/test_module_scripts.sh
+
+      # 构建 OpenListHelper 伴侣应用
+      - name: 构建 OpenListHelper 伴侣应用
+        if: env.SHOULD_BUILD == 'true'
+        run: |
+          bash companion-apk/build-apk.sh
+
       # 打包模块
       - name: 打包模块
         if: env.SHOULD_BUILD == 'true'
