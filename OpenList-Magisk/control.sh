@@ -560,7 +560,19 @@ cmd_passwd() { # b64pass [b64user]
 
     # 兜底 CLI：需要停服务
     [ -n "$(openlist_pid)" ] && was_running=1
-    [ "$was_running" = "1" ] && cmd_stop >/dev/null 2>&1
+    if [ "$was_running" = "1" ]; then
+        cmd_stop >/dev/null 2>&1
+        # 必须等进程真的退出：SQLite 在运行中可能处于写入中途，
+        # 复制到一半的 data.db 会导致迁移后打不开
+        while [ -n "$(openlist_pid)" ] && [ "$i" -lt 10 ]; do
+            sleep 1
+            i=$((i + 1))
+        done
+        if [ -n "$(openlist_pid)" ]; then
+            pkill -9 -f "$OPENLIST_BINARY" 2>/dev/null || true
+            sleep 1
+        fi
+    fi
     "$OPENLIST_BINARY" admin set "$p" --data "$DATA_DIR" >/dev/null 2>&1 || {
         [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
         fail "改密失败（API 不可用，CLI 也失败）"
@@ -581,7 +593,7 @@ cmd_passwd() { # b64pass [b64user]
 
 # ---------- 迁移 ----------
 cmd_migrate_data() {
-    local b64="${1:-}" new old was_running=0 a b old_esc new_esc extra before=0
+    local b64="${1:-}" new old was_running=0 a b old_esc new_esc extra before=0 keep_bin=0 f i=0
     [ -n "$b64" ] || fail "缺少目标目录"
     new="$(echo "$b64" | base64 -d 2>/dev/null)"
     old="$DATA_DIR"
@@ -607,7 +619,19 @@ cmd_migrate_data() {
     before="$(find "$new" -type f 2>/dev/null | wc -l | tr -d ' ')"
 
     [ -n "$(openlist_pid)" ] && was_running=1
-    [ "$was_running" = "1" ] && cmd_stop >/dev/null 2>&1
+    if [ "$was_running" = "1" ]; then
+        cmd_stop >/dev/null 2>&1
+        # 必须等进程真的退出：SQLite 在运行中可能处于写入中途，
+        # 复制到一半的 data.db 会导致迁移后打不开
+        while [ -n "$(openlist_pid)" ] && [ "$i" -lt 10 ]; do
+            sleep 1
+            i=$((i + 1))
+        done
+        if [ -n "$(openlist_pid)" ]; then
+            pkill -9 -f "$OPENLIST_BINARY" 2>/dev/null || true
+            sleep 1
+        fi
+    fi
 
     progress copy "$DATA_DIR -> $new"
     cp -a "$DATA_DIR/." "$new/" 2>/dev/null || {
@@ -629,6 +653,19 @@ cmd_migrate_data() {
             fail "data.db 校验失败"
         }
     fi
+
+    # 迁移 = 移动：校验通过后清空源目录里的数据（二进制在源目录 bin 里时保留它）
+    case "$OPENLIST_BINARY" in
+        "$old"/bin/*) keep_bin=1 ;;
+    esac
+    for f in "$old"/* "$old"/.[!.]*; do
+        [ -e "$f" ] || continue
+        if [ "$keep_bin" = "1" ] && [ "$f" = "$old/bin" ]; then
+            continue
+        fi
+        rm -rf "$f" 2>/dev/null
+    done
+    kv source_cleaned 1
 
     sed -i "s|^DATA_DIR=.*|DATA_DIR=\"$new\"|" "$SERVICE_SH" || fail "更新 service.sh 失败"
 
@@ -670,7 +707,19 @@ cmd_migrate_bin() {
     [ -f "$new" ] && fail "目标文件已存在"
 
     [ -n "$(openlist_pid)" ] && was_running=1
-    [ "$was_running" = "1" ] && cmd_stop >/dev/null 2>&1
+    if [ "$was_running" = "1" ]; then
+        cmd_stop >/dev/null 2>&1
+        # 必须等进程真的退出：SQLite 在运行中可能处于写入中途，
+        # 复制到一半的 data.db 会导致迁移后打不开
+        while [ -n "$(openlist_pid)" ] && [ "$i" -lt 10 ]; do
+            sleep 1
+            i=$((i + 1))
+        done
+        if [ -n "$(openlist_pid)" ]; then
+            pkill -9 -f "$OPENLIST_BINARY" 2>/dev/null || true
+            sleep 1
+        fi
+    fi
 
     mkdir -p "$(dirname "$new")" 2>/dev/null || fail "无法创建目标目录"
     cp -f "$OPENLIST_BINARY" "$new" 2>/dev/null || {

@@ -14,7 +14,7 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 - **数据目录可选**：支持两种数据存储位置
   - /data/adb/openlist/
   - /storage/emulated/0/Android/openlist/
-- **密码定制**：提供初始密码设置选项
+- **账号初始化**：首次打开网页按向导设置管理员账号
 - **动态服务管理**：通过 Magisk/KernelSU/APatch 的"动作"按钮一键控制服务
 - **WebUI 控制台**（KernelSU / APatch）：查看状态、启停、在线更新二进制、改下载配置、改管理员账号、存储启停、离线任务、迁移数据/二进制目录、路径自检
 - **命令行控制**：`control.sh` 三家通用，WebUI 也调用它
@@ -85,12 +85,12 @@ sh /data/adb/modules/openlist/control.sh config-get
 
 ### 访问方式
 - Web 界面访问：`http://<设备IP>:5244`
-- 初始密码：查看数据目录下的 `初始密码.txt`
+- 首次打开会进入安装向导，按提示设置管理员账号和密码
+- 完成向导前，WebUI 里存储、离线任务、设置会提示「还没有管理员账号」
 
 ### 数据存储
 - 默认数据目录：`/data/adb/openlist/`
 - 日志文件位置：与数据目录相同
-- 密码文件：`初始密码.txt`
 - **卸载默认保留数据**：只清理二进制。要连数据一起删，卸载前执行
   `touch /data/adb/modules/openlist/.delete_data_on_uninstall`，或卸载后手动 `rm -rf`
 

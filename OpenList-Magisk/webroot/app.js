@@ -225,7 +225,7 @@
   function apiHint(res) {
     var msg = (res && res.message) || '';
     if (/record not found/i.test(msg)) {
-      return '管理员账号尚未初始化：重启一次服务会自动创建，初始密码见 初始密码.txt';
+      return '还没有管理员账号：请先在浏览器打开 OpenList 网页完成初始化（首次访问会引导设置账号密码），完成后刷新本页';
     }
     if (/token is invalidated|Guest user is disabled|not admin/i.test(msg)) {
       return '管理员 token 失效：重启服务后重试';

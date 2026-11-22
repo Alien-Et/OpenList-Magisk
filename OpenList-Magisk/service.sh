@@ -62,6 +62,17 @@ get_lan_ip() {
     RETRY_COUNT=0
 
     while [ $RETRY_COUNT -lt $MAX_RETRY ]; do
+        # 首选默认路由的出口地址：能避开 docker / tun 的 172.16-31 虚拟网段
+        ip_address=$($IP_CMD route get 1.1.1.1 2>/dev/null | $AWK_CMD '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' | $HEAD_CMD -n 1)
+        case "$ip_address" in
+            172.1[6-9].*|172.2[0-9].*|172.3[0-1].*) ip_address="" ;;
+        esac
+        if [ -n "$ip_address" ]; then
+            log "成功获取 IP（默认路由）: ip_address=$ip_address (尝试次数: $((RETRY_COUNT + 1)))"
+            echo "$ip_address" > "$TEMP_IP_FILE"
+            return 0
+        fi
+
         # 新增：检测是否有活跃的Wi-Fi接口（wlan开头且state UP）
         WLAN_INTERFACE=$($IP_CMD link | $GREP_CMD "state UP" | $AWK_CMD '{print $2}' | $CUT_CMD -d: -f1 | $GREP_CMD -E "^wlan" | $HEAD_CMD -n 1)
         
@@ -180,16 +191,11 @@ update_module_prop_running() {
         rm -f "$TEMP_PORT_FILE" 2>/dev/null
         log "最终端口: $port"
 
-        PASSWORD_TEXT=""
-        if [ -f "${DATA_DIR}/初始密码.txt" ]; then
-            PASSWORD_TEXT=" | 初始密码：$(cat "${DATA_DIR}/初始密码.txt")"
-        fi
-
         if [ -n "$port" ] && [ "$CURRENT_IP" != "无法获取IP" ]; then
-            NEW_DESC="description=【运行中】当前地址：http://${CURRENT_IP}:${port} | PID:$pid | 数据目录：${DATA_DIR} | 点击▲操作关闭程序${PASSWORD_TEXT}"
+            NEW_DESC="description=【运行中】当前地址：http://${CURRENT_IP}:${port} | PID:$pid | 数据目录：${DATA_DIR} | 点击▲操作关闭程序"
         else
             log "错误: IP 或端口获取失败 (IP: $CURRENT_IP, 端口: $port)"
-            NEW_DESC="description=【运行中】无法检测 openlist 地址（IP: $CURRENT_IP, 端口: $port，PID:$pid），请检查日志 $LOG_FILE | 数据目录：${DATA_DIR} | 点击▲操作关闭程序${PASSWORD_TEXT}"
+            NEW_DESC="description=【运行中】无法检测 openlist 地址（IP: $CURRENT_IP, 端口: $port，PID:$pid），请检查日志 $LOG_FILE | 数据目录：${DATA_DIR} | 点击▲操作关闭程序"
         fi
     fi
 
@@ -272,20 +278,8 @@ fi
 
 log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
 
-# OpenList v4.2.10 起，未初始化时不再自动创建 admin（改为等 Web 安装向导）。
-# 这里通过 OPENLIST_ADMIN_PASSWORD 让它首次启动就把 admin 建出来，
-# 否则所有 /api/admin/* 都会返回 500 record not found（存储、任务、配置全挂）。
-PWD_FILE="$DATA_DIR/初始密码.txt"
-if [ ! -f "$PWD_FILE" ]; then
-    PWD_RAND="$( (cat /dev/urandom 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 12) 2>/dev/null )"
-    [ -n "$PWD_RAND" ] || PWD_RAND="admin$(date +%s | tail -c 5)"
-    echo "$PWD_RAND" > "$PWD_FILE" 2>/dev/null
-    chmod 600 "$PWD_FILE" 2>/dev/null
-    log "未找到初始密码，已生成并写入 $PWD_FILE"
-fi
-OPENLIST_ADMIN_PASSWORD="$(cat "$PWD_FILE" 2>/dev/null)"
-[ -n "$OPENLIST_ADMIN_PASSWORD" ] && export OPENLIST_ADMIN_PASSWORD
-
+# 不预设 admin 密码：OpenList v4.2.10 起由网页安装向导创建管理员
+# （POST /api/public/init/setup），首次打开 http://IP:PORT 会引导设置账号密码。
 $OPENLIST_BINARY server --data "$DATA_DIR" &
 OPENLIST_PID=$!
 

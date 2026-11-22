@@ -82,20 +82,6 @@ show_data_menu() {
     ui_print "👉 当前选择：选项 $current"
 }
 
-show_password_menu() {
-    local current=$1
-    ui_print " "
-    ui_print "🔐 初始密码设置"
-    ui_print "询问是否修改初始密码为admin？"
-    ui_print "（后续请到管理面板自行修改）"
-    ui_print "1、不修改"
-    ui_print "2、修改"
-    ui_print "━━━━━━━━━━━━━━━━━━━━━━"
-    ui_print "音量+ 确认  |  音量- 切换"
-    ui_print "━━━━━━━━━━━━━━━━━━━━━━"
-    ui_print "👉 当前选择：选项 $current"
-}
-
 # 选择函数
 make_selection() {
     local menu_type="$1"
@@ -109,9 +95,6 @@ make_selection() {
             ;;
         "data")
             show_data_menu "$current"
-            ;;
-        "password")
-            show_password_menu "$current"
             ;;
     esac
     
@@ -249,30 +232,8 @@ if [ -f "$MODROOT/control.sh" ]; then
     chmod 755 "$MODROOT/control.sh" 2>/dev/null || true
 fi
 
-# 选择初始密码
-make_selection "password" "2"
-PASSWORD_OPTION=$?
-
-# OpenList v4.2.10 起，未初始化时不再自动创建 admin（改为等 Web 安装向导）。
-# service.sh 会读取「初始密码.txt」并通过 OPENLIST_ADMIN_PASSWORD 让首次启动
-# 直接建出 admin；这里只负责写文件。
-# 注意：不要再用 `openlist admin set`——admin 不存在时它会静默失败（只写日志），
-# 看起来成功但密码根本没生效。
-mkdir -p "$DATA_DIR" 2>/dev/null
-
-if [ "$PASSWORD_OPTION" = "2" ]; then
-    if echo "admin" > "$DATA_DIR/初始密码.txt"; then
-        chmod 600 "$DATA_DIR/初始密码.txt" 2>/dev/null
-        ui_print "✅ 初始密码已设为：admin"
-        ui_print "   已保存到：$DATA_DIR/初始密码.txt"
-    else
-        ui_print "❌ 密码文件写入失败（数据目录不可写？）"
-    fi
-else
-    ui_print "✓ 首次启动会自动生成随机密码"
-    ui_print "   密码保存在：$DATA_DIR/初始密码.txt"
-fi
-
+# 管理员账号由 OpenList 网页安装向导在首次访问时创建，
+# 安装阶段不再询问初始密码（v4.2.10 起未初始化时不会自动建 admin）。
 # 完成安装
 ui_print " "
 ui_print "✨ 安装完成"
