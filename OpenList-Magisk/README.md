@@ -91,6 +91,8 @@ sh /data/adb/modules/openlist/control.sh config-get
 - 默认数据目录：`/data/adb/openlist/`
 - 日志文件位置：与数据目录相同
 - 密码文件：`初始密码.txt`
+- **卸载默认保留数据**：只清理二进制。要连数据一起删，卸载前执行
+  `touch /data/adb/modules/openlist/.delete_data_on_uninstall`，或卸载后手动 `rm -rf`
 
 ## 故障排除
 

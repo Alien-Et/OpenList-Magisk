@@ -4,7 +4,16 @@
 (function () {
   'use strict';
 
-  var MODDIR = '/data/adb/modules/openlist';
+  // 模块目录：优先从 WebUI 自身地址推导
+  // KernelSU / APatch 打开的是 file:///data/adb/modules/<id>/webroot/index.html，
+  // 写死 id 的话，改了 module.prop 的 id 就会失配
+  var MODDIR = (function () {
+    try {
+      var m = (location.pathname || '').match(/^(.*)\/webroot\/index\.html?$/);
+      if (m && m[1]) return decodeURIComponent(m[1]);
+    } catch (e) {}
+    return '/data/adb/modules/openlist';
+  })();
   var CONTROL = MODDIR + '/control.sh';
   var PROGRESS = '/data/local/tmp/openlist_update.progress';
   var hasKsu = typeof window.ksu !== 'undefined';

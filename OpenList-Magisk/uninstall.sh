@@ -61,15 +61,23 @@ clean_binaries() {
     fi
 }
 
-# 自动清理数据目录
+# 清理数据目录
+# 卸载脚本在 Magisk 里无法交互，默认【保留】数据：数据库删了没法恢复。
+# 确实要连数据一起删时，卸载前手动创建标记文件：
+#   touch /data/adb/modules/openlist/.delete_data_on_uninstall
 clean_data() {
-    log "开始自动清理数据目录..."
-    local found=0
-    
-    # 清理所有可能的数据目录
-    local dyn
+    local found=0 dyn
     dyn="$(get_service_var DATA_DIR)"
     case "$dyn" in '$MODDIR'*) dyn="$MODROOT${dyn#\$MODDIR}" ;; esac
+
+    if [ ! -f "$MODROOT/.delete_data_on_uninstall" ]; then
+        log "已保留数据目录：${dyn:-未知}"
+        [ -n "$dyn" ] && log "如需彻底删除，请手动执行：rm -rf \"$dyn\""
+        log "或在卸载前执行：touch $MODROOT/.delete_data_on_uninstall"
+        return 0
+    fi
+
+    log "检测到 .delete_data_on_uninstall，开始清理数据目录..."
     for dir in "$dyn" "/data/adb/openlist" "/sdcard/Android/openlist"; do
         if [ -d "$dir" ]; then
             log "正在删除数据目录：$dir"
@@ -77,7 +85,7 @@ clean_data() {
             found=1
         fi
     done
-    
+
     if [ $found -eq 1 ]; then
         log "数据目录清理完成"
     else
@@ -95,7 +103,7 @@ main() {
     # 清理二进制文件
     clean_binaries
     
-    # 自动清理数据目录
+    # 清理数据（默认保留，见 clean_data）
     clean_data
     
     log "卸载完成"

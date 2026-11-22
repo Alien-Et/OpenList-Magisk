@@ -18,9 +18,10 @@ MODDIR="${MODDIR:-$MODROOT}"
 
 ui_print "正在安装 OpenList Magisk 模块..."
 
-# 检测设备架构
-ARCH=$(getprop ro.product.cpu.abi)
-ui_print "检测到架构: $ARCH"
+# 检测设备架构：框架会提供 $ARCH（arm64/arm/x86/x86_64）。
+# 旧代码直接拿 abi 覆盖 $ARCH，x86_64 设备会被误判成 arm 分支。
+DEV_ABI="$(getprop ro.product.cpu.abi)"
+ui_print "检测到架构: ${ARCH:-未知} (abi: ${DEV_ABI:-未知})"
 
 # 定义二进制文件名
 BINARY_NAME="openlist"
@@ -157,7 +158,19 @@ esac
 mkdir -p "$BINARY_PATH"
 
 # 安装二进制文件
-if echo "$ARCH" | grep -q "arm64"; then
+case "$ARCH" in
+    arm64) BIN_ARCH=arm64 ;;
+    arm)   BIN_ARCH=arm ;;
+    *)
+        case "$DEV_ABI" in
+            arm64*)        BIN_ARCH=arm64 ;;
+            armeabi*|arm*) BIN_ARCH=arm ;;
+            *) abort "❌ 不支持的架构：${ARCH:-未知} / ${DEV_ABI:-未知}，本模块仅提供 arm / arm64" ;;
+        esac
+        ;;
+esac
+
+if [ "$BIN_ARCH" = "arm64" ]; then
     ui_print "📦 安装 ARM64 版本..."
     if [ -f "$MODROOT/openlist-arm64" ]; then
         mv "$MODROOT/openlist-arm64" "$BINARY_PATH/$BINARY_NAME"
@@ -187,6 +200,14 @@ case $DATA_DIR_OPTION in
     1) DATA_DIR="/data/adb/openlist" ;;
     2) DATA_DIR="/sdcard/Android/openlist" ;;
 esac
+
+# 可写性检查：recovery 安装时 /sdcard 可能还没挂载，
+# 直接往下走会得到一个指向不存在目录的 service.sh
+if ! mkdir -p "$DATA_DIR" 2>/dev/null || [ ! -w "$DATA_DIR" ]; then
+    ui_print "⚠️ 警告：$DATA_DIR 当前不可写"
+    ui_print "   常见原因：/sdcard 未挂载（recovery 安装）"
+    ui_print "   服务启动后可能无法写入数据库，重启后请在 WebUI 里迁移数据目录"
+fi
 
 # 数据迁移提示
 ui_print " "
@@ -227,25 +248,6 @@ fi
 if [ -f "$MODROOT/control.sh" ]; then
     chmod 755 "$MODROOT/control.sh" 2>/dev/null || true
 fi
-
-# 完成安装
-ui_print " "
-ui_print "✨ 安装完成"
-ui_print "━━━━━━━━━━━━━━━━━━━━━━"
-
-# 根据安装选项显示友好的二进制路径
-case $INSTALL_OPTION in
-    1) 
-        ui_print "📍 二进制: $BINARY_PATH/$BINARY_NAME"
-        ;;
-    2) 
-        ui_print "📍 二进制: 模块目录/bin/openlist"
-        ;;
-    3) 
-        ui_print "📍 二进制: 模块目录/system/bin/openlist"
-        ;;
-esac
-ui_print "📁 数据目录: $DATA_DIR"
 
 # 选择是否修改密码
 make_selection "password" "2"
@@ -293,6 +295,25 @@ if [ "$PASSWORD_OPTION" = "2" ]; then
 else
     ui_print "✓ 跳过密码修改"
 fi
+
+# 完成安装
+ui_print " "
+ui_print "✨ 安装完成"
+ui_print "━━━━━━━━━━━━━━━━━━━━━━"
+
+# 根据安装选项显示友好的二进制路径
+case $INSTALL_OPTION in
+    1) 
+        ui_print "📍 二进制: $BINARY_PATH/$BINARY_NAME"
+        ;;
+    2) 
+        ui_print "📍 二进制: 模块目录/bin/openlist"
+        ;;
+    3) 
+        ui_print "📍 二进制: 模块目录/system/bin/openlist"
+        ;;
+esac
+ui_print "📁 数据目录: $DATA_DIR"
 
 ui_print " "
 ui_print "👋 安装完成，请重启设备"

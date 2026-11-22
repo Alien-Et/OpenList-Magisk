@@ -97,6 +97,8 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - 默认数据目录：`/data/adb/openlist/`
 - 日志文件位置：与数据目录相同
 - 密码文件：`初始密码.txt`
+- **卸载不会删除数据**：卸载只清理二进制，数据目录会保留。确实要连数据一起删，卸载前执行
+  `touch /data/adb/modules/openlist/.delete_data_on_uninstall`，或卸载后手动 `rm -rf`。
 
 ## 故障排除
 
