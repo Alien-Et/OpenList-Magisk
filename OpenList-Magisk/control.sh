@@ -521,6 +521,13 @@ cmd_migrate_data() {
         *) fail "目标路径不合法" ;;
     esac
     [ "$new" = "$DATA_DIR" ] && fail "目标与当前数据目录相同"
+    case "$new" in
+        "$MODDIR"|"$MODDIR"/*) fail "数据目录不能放在模块目录内" ;;
+        "$DATA_DIR"/*) fail "目标不能是当前数据目录的子目录" ;;
+    esac
+    case "$DATA_DIR" in
+        "$new"/*) fail "目标不能是当前数据目录的父目录" ;;
+    esac
     if [ -d "$new" ] && [ -n "$(ls -A "$new" 2>/dev/null)" ]; then
         fail "目标目录非空"
     fi
@@ -574,6 +581,10 @@ cmd_migrate_bin() {
         *) fail "目标路径不合法（仅支持 /data 或模块 system/bin）" ;;
     esac
     [ "$new" = "$OPENLIST_BINARY" ] && fail "目标与当前路径相同"
+    case "$new" in
+        "$MODDIR"/webroot/*) fail "不能放进 webroot" ;;
+        "$DATA_DIR"/*) fail "二进制不能放在数据目录内" ;;
+    esac
     [ -f "$new" ] && fail "目标文件已存在"
 
     [ -n "$(openlist_pid)" ] && was_running=1
