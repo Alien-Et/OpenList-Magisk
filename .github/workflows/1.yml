@@ -63,9 +63,10 @@ jobs:
             exit 1
           fi
 
-          # 生成版本代码（比如 v4.1.10 -> 4110）
+          # 生成版本代码：主版本×10000 + 次版本×100 + 修订号
+          # 例如 v4.2.11 -> 40211；次版本最多 99、修订号最多 99，避免 v4.10.0 与 v5.0.0 撞号
           VERSION_NUM=$(echo "$VERSION" | tr -d 'v')
-          VERSION_CODE=$(echo "$VERSION_NUM" | awk -F. '{print $1 * 1000 + $2 * 100 + $3}')
+          VERSION_CODE=$(echo "$VERSION_NUM" | awk -F. '{print $1 * 10000 + $2 * 100 + $3}')
 
           # 提取下载链接
           ARM_URL=$(echo "$BODY" | grep '"browser_download_url":' | grep 'openlist-android-arm.tar.gz' | sed -E 's/.*"([^"]+)".*/\1/')

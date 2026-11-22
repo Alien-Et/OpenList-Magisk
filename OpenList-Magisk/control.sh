@@ -299,7 +299,7 @@ cmd_update() {
     progress download "$asset"
     http_download "$url" "$tgz" || { rm -rf "$work"; fail "下载失败（直连和代理都不可用）"; }
 
-    # md5 校验（失败只提示，不中止：release 的 md5 文件偶发缺失）
+    # md5 校验：md5 文件缺失则跳过（release 偶发不带），校验值不匹配则中止
     md5url="$(echo "$json" | tr ',' '\n' | grep -o 'https://[^"]*md5-android.txt' | head -n 1)"
     if [ -n "$md5url" ] && http_download "$md5url" "$work/md5.txt"; then
         want="$(awk -v f="$asset" '{n=$2; sub(/^\.\//,"",n); if (n==f) {print $1; exit}}' "$work/md5.txt" 2>/dev/null)"
@@ -336,7 +336,7 @@ cmd_update() {
         case "$tag" in
             v[0-9]*.[0-9]*.[0-9]*)
                 new_ver="$tag"
-                new_code="$(echo "${tag#v}" | awk -F. '{printf "%d", $1 * 1000 + $2 * 100 + $3}')"
+                new_code="$(echo "${tag#v}" | awk -F. '{printf "%d", $1 * 10000 + $2 * 100 + $3}')"
                 sed -i "s/^version=.*/version=$new_ver/" "$MODULE_PROP" 2>/dev/null || true
                 sed -i "s/^versionCode=.*/versionCode=$new_code/" "$MODULE_PROP" 2>/dev/null || true
                 ;;
