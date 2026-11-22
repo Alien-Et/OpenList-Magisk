@@ -100,7 +100,7 @@
   <input id="newPwd" type="password" autocomplete="new-password" placeholder="至少 8 位">
   <label>确认新密码</label>
   <input id="newPwd2" type="password" autocomplete="new-password" placeholder="再输一次">
-  <div class="hint">改密时会先停止服务，完成后自动启动。</div>
+  <div class="hint">优先走 OpenList 管理 API 在线生效，不重启服务；API 不可用时才退回命令行方式（会重启一次）。</div>
   <div class="btns">
     <button class="warn" id="pwdBtn">修改密码</button>
   </div>
