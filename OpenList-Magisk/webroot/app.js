@@ -199,6 +199,26 @@
     });
   }
 
+  /* 迁移预设路径 */
+  function initPresets() {
+    document.querySelectorAll('.chips').forEach(function (box) {
+      var target = document.getElementById(box.dataset.target);
+      if (!target) return;
+      box.querySelectorAll('.chip-btn').forEach(function (b) {
+        b.onclick = function () {
+          target.value = b.dataset.path;
+          box.querySelectorAll('.chip-btn').forEach(function (x) { x.classList.remove('active'); });
+          b.classList.add('active');
+        };
+      });
+      target.addEventListener('input', function () {
+        box.querySelectorAll('.chip-btn').forEach(function (x) {
+          x.classList.toggle('active', x.dataset.path === target.value);
+        });
+      });
+    });
+  }
+
   /* ---------- 状态 ---------- */
   function refresh() {
     return ctl('status', 20000).then(function (r) {
@@ -588,6 +608,7 @@
     $('themeBtn').onclick = cycleTheme;
     applyTheme();
     initSelects();
+    initPresets();
     $('modeChip').textContent = hasKsu ? 'KernelSU / APatch' : '无 root 接口';
     ['toggleBtn', 'restartBtn', 'checkBtn', 'updateBtn', 'saveCfgBtn', 'pwdBtn', 'migrateDataBtn', 'migrateBinBtn']
       .forEach(function (id) { $(id).disabled = true; });

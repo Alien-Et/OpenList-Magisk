@@ -201,6 +201,18 @@ select optgroup{
 }
 .select-menu button:active{transform:none}
 .select-menu button.active{background:var(--primary-soft);color:var(--primary)}
+
+/* 预设路径胶囊 */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 8px}
+.chip-btn{
+  flex:none;min-width:0;min-height:34px;padding:7px 12px;
+  font-size:12px;font-weight:600;border-radius:999px;
+  background:var(--glass-strong);color:var(--text);
+  border:1px solid var(--glass-border);box-shadow:none;
+  text-align:left;
+}
+.chip-btn:active{transform:none}
+.chip-btn.active{background:var(--primary-soft);color:var(--primary);border-color:transparent}
 textarea{min-height:96px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
 .hint{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.5}
 
