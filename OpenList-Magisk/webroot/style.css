@@ -270,3 +270,54 @@ details[open] summary::before{content:"▾ "}
   .card{padding:15px;border-radius:22px}
   .addr{font-size:20px}
 }
+
+/* ---------- 目录路径 ---------- */
+.path{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:12px;
+  color:var(--sub);
+  max-width:64%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  cursor:pointer;
+  user-select:none;
+}
+.path:active{opacity:.55}
+
+/* ---------- 版本列表 ---------- */
+.verlist{
+  max-height:52vh;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.verrow{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:9px 0;
+  border-bottom:1px solid var(--line);
+}
+.verrow:last-child{border-bottom:0}
+.verrow .ver{
+  font-weight:600;
+  font-size:14px;
+  font-variant-numeric:tabular-nums;
+}
+.verrow .date{
+  flex:1;
+  font-size:12px;
+  color:var(--sub);
+  font-variant-numeric:tabular-nums;
+}
+.verrow .chip{margin-left:auto}
+button.mini{
+  margin-left:auto;
+  flex:0 0 auto;
+  min-width:0;
+  padding:5px 12px;
+  font-size:12px;
+  border-radius:999px;
+  min-height:0;
+  line-height:1.25;
+}

@@ -71,9 +71,65 @@
     return btoa(unescape(encodeURIComponent(s)));
   }
 
+  /* ---------- 演示模式（浏览器直接打开 index.html?demo=1 时用假数据预览界面） ---------- */
+  var DEMO = /[?&]demo=1/.test(location.search || '') || /preview\.html?$/i.test(location.pathname || '');
+  var DEMO_VERSIONS = [
+    'v4.2.10|2026-11-19', 'v4.2.9|2025-11-11', 'v4.2.8|2026-10-25', 'v4.2.7|2026-10-24',
+    'v4.2.6|2026-03-25', 'v4.2.5|2026-10-15', 'v4.2.4|2026-09-01', 'v4.2.3|2026-08-07',
+    'v4.2.2|2026-07-23', 'v4.2.1|2026-07-01', 'v4.2.0|2026-05-25', 'v4.1.10|2026-04-09'
+  ];
+
+  function demoCtl(args) {
+    var a = String(args || '');
+    var kv = { result: 'ok' };
+    var out = [];
+    if (a.indexOf('status') === 0) {
+      kv = {
+        running: '1', pid: '21874', port: '5244', ip: '192.168.1.100', version: 'v4.2.10',
+        data_dir: '/data/adb/openlist', bin: '/data/adb/openlist/bin/openlist',
+        module_dir: '/data/adb/modules/openlist', abi: 'arm64-v8a', result: 'ok'
+      };
+    } else if (a.indexOf('versions') === 0) {
+      out = DEMO_VERSIONS.slice();
+    } else if (a.indexOf('config-get') === 0) {
+      kv = {
+        PORT: '5244', TOKEN: 'openlist-demo', PATH: '/115/影视/',
+        TOOL: '115 Open', DELETE_POLICY: 'delete_on_upload_succeed',
+        PRESET_PATHS: '/115/影视/,/115/', result: 'ok'
+      };
+    } else if (a.indexOf('logs') === 0) {
+      out = [
+        '[2026-11-23 06:20:01] 启动 OpenList: /data/adb/openlist/bin/openlist server --data /data/adb/openlist',
+        '[2026-11-23 06:20:02] OpenList 服务启动成功 (PID: 21874)',
+        '[2026-11-23 06:20:03] 成功获取 Openlist 端口: 5244',
+        '[2026-11-23 06:20:04] 成功获取 IP: ip_address=192.168.1.100'
+      ];
+    } else if (a.indexOf('check') === 0) {
+      kv = { current: 'v4.2.10', latest: 'v4.2.10', asset: 'openlist-android-arm64.tar.gz',
+             abi: 'arm64-v8a', up_to_date: '1', result: 'ok' };
+    }
+    out.push('result=' + (kv.result || 'ok'));
+    return { raw: { errno: 0, stdout: out.join('\n'), stderr: '' }, kv: kv };
+  }
+
+  function demoSh(cmd) {
+    var c = String(cmd || '');
+    if (c.indexOf('/api/admin/storage/list') > 0) {
+      return { errno: 0, stdout: '{"code":200,"data":[{"id":1,"mount_path":"/115","driver":"115 Open","status":"work"}]}', stderr: '' };
+    }
+    if (c.indexOf('/api/admin/task/offline_download/undone') > 0) {
+      return { errno: 0, stdout: '{"code":200,"data":[]}', stderr: '' };
+    }
+    if (c.indexOf(' api ') > 0) {
+      return { errno: 0, stdout: '{"code":200,"data":{}}', stderr: '' };
+    }
+    return { errno: 0, stdout: '', stderr: '' };
+  }
+
   /* ---------- KernelSU / APatch 兼容层 ---------- */
   var cbSeq = 0;
   function sh(cmd, timeout) {
+    if (DEMO) return Promise.resolve(demoSh(cmd));
     timeout = timeout || 30000;
     return new Promise(function (resolve) {
       if (!hasKsu) return resolve({ errno: -1, stdout: '', stderr: 'NO_KSU' });
@@ -105,6 +161,7 @@
   }
 
   function ctl(args, timeout) {
+    if (DEMO) return Promise.resolve(demoCtl(args));
     return sh("sh '" + CONTROL + "' " + args, timeout || 30000).then(function (r) {
       var kv = {};
       (r.stdout || '').split('\n').forEach(function (line) {
@@ -128,6 +185,33 @@
     });
   }
 
+  /* ---------- 路径显示与复制 ---------- */
+  function copyText(t) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = t;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      toast(ok ? '已复制' : '复制失败', !ok);
+    } catch (e) {
+      toast('复制失败', true);
+    }
+  }
+
+  function setPath(id, val) {
+    var el = $(id);
+    if (!el) return;
+    el.textContent = val || '-';
+    el.dataset.path = val || '';
+    el.onclick = function () {
+      if (el.dataset.path) copyText(el.dataset.path);
+    };
+  }
+
   /* ---------- 渲染 ---------- */
   function renderStatus(kv) {
     state.running = kv.running || '0';
@@ -141,9 +225,9 @@
     $('stateText').textContent = state.running === '1' ? '运行中' : '已停止';
     $('pidText').textContent = 'PID ' + state.pid;
     $('addrText').textContent = state.running === '1' ? ('http://' + state.ip + ':' + state.port) : '未运行';
-    $('dataDirText').textContent = '数据目录 ' + (kv.data_dir || '-');
-    $('modDirText').textContent = kv.module_dir || MODDIR;
-    $('binText').textContent = kv.bin || '-';
+    setPath('dataDirText', kv.data_dir);
+    setPath('modDirText', kv.module_dir || MODDIR);
+    setPath('binText', kv.bin);
     $('curVer').textContent = state.version;
     if (kv.abi) $('abiText').textContent = kv.abi;
 
@@ -357,6 +441,90 @@
       toast('更新失败: ' + e, true);
       b.disabled = false;
       b.textContent = '立即更新';
+    });
+  }
+
+  /* ---------- 所有版本（含回退） ---------- */
+  function loadVersions() {
+    var box = $('verList');
+    if (!box) return;
+    box.textContent = '加载中…';
+    return ctl('versions', 60000).then(function (r) {
+      var rows = (r.raw.stdout || '').split('\n').filter(function (l) {
+        return l && l.indexOf('=') < 0;
+      });
+      if (!rows.length) {
+        box.textContent = r.kv.error || '没有获取到版本列表';
+        return;
+      }
+      var cur = state.version || '';
+      box.textContent = '';
+      rows.forEach(function (line) {
+        var p = line.split('|');
+        var ver = (p[0] || '').trim();
+        var date = (p[1] || '').trim();
+        if (!ver) return;
+        var row = document.createElement('div');
+        row.className = 'verrow';
+        var name = document.createElement('span');
+        name.className = 'ver';
+        name.textContent = ver;
+        var d = document.createElement('span');
+        d.className = 'date';
+        d.textContent = date || '-';
+        row.appendChild(name);
+        row.appendChild(d);
+        if (ver === cur) {
+          var tag = document.createElement('span');
+          tag.className = 'chip';
+          tag.textContent = '当前';
+          row.appendChild(tag);
+        } else {
+          var btn = document.createElement('button');
+          btn.className = 'mini';
+          btn.textContent = '安装';
+          btn.onclick = function () { installVersion(ver, btn); };
+          row.appendChild(btn);
+        }
+        box.appendChild(row);
+      });
+    }).catch(function (e) {
+      box.textContent = '获取失败：' + e;
+    });
+  }
+
+  function installVersion(ver, btn) {
+    if (btn.dataset.confirm !== '1') {
+      btn.dataset.confirm = '1';
+      btn.textContent = '确认？';
+      setTimeout(function () {
+        if (btn.dataset.confirm === '1') {
+          btn.dataset.confirm = '0';
+          btn.textContent = '安装';
+        }
+      }, 4000);
+      return;
+    }
+    btn.dataset.confirm = '0';
+    btn.disabled = true;
+    btn.textContent = '安装中…';
+    $('updateHint').textContent = '正在切换到 ' + ver + '…';
+    startProgress();
+    ctl("update --tag '" + ver + "' --force", 1800000).then(function (r) {
+      stopProgress();
+      if (r.kv.result === 'ok') {
+        toast('已切换到 ' + (r.kv.current || ver));
+        $('updateWarn').style.display = 'none';
+      } else {
+        toast(r.kv.error || '切换失败', true);
+        $('updateWarn').textContent = r.kv.error || '切换失败';
+        $('updateWarn').style.display = 'block';
+      }
+      return refresh();
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = '安装';
+      loadVersions();
     });
   }
 
@@ -686,7 +854,7 @@
       });
     };
 
-    refresh().then(loadConfig).then(loadLog).then(loadStorages).then(loadTasks);
+    refresh().then(loadVersions).then(loadConfig).then(loadLog).then(loadStorages).then(loadTasks);
   }
 
   if (document.readyState === 'loading') {

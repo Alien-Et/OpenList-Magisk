@@ -7,7 +7,8 @@
 #   control.sh status
 #   control.sh start | stop | restart
 #   control.sh check
-#   control.sh update [--force] [--asset NAME] [--proxy URL]
+#   control.sh versions
+#   control.sh update [--force] [--asset NAME] [--proxy URL] [--tag vX.Y.Z]
 #   control.sh logs [行数]
 #   control.sh config-get
 #   control.sh config-save <base64(完整 offline.conf)>
@@ -33,6 +34,8 @@ PROGRESS_FILE="${PROGRESS_FILE:-/data/local/tmp/openlist_update.progress}"
 TMP_DIR="${TMP_DIR:-/data/local/tmp}"
 
 API_URL="https://api.github.com/repos/OpenListTeam/OpenList/releases/latest"
+RELEASES_URL="https://api.github.com/repos/OpenListTeam/OpenList/releases?per_page=100"
+RELEASES_CACHE="$TMP_DIR/openlist_releases.cache"
 GH_PROXY="${GH_PROXY:-}"
 PROXIES="https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/"
 
@@ -274,21 +277,72 @@ cmd_check() {
     kv result ok
 }
 
+# 列出所有 release（含历史），供回退选择。输出 item=版本|发布日期
+cmd_versions() {
+    local json now ts tf df
+    now="$(date +%s 2>/dev/null || echo 0)"
+    ts="$(sed -n 's/^ts=//p' "$RELEASES_CACHE" 2>/dev/null | head -n 1)"
+    # 5 分钟内复用缓存，避免反复消耗 GitHub 未认证额度（60 次/小时）
+    if [ -f "$RELEASES_CACHE" ] && [ -n "$ts" ] && [ "$((now - ts))" -lt 300 ] 2>/dev/null; then
+        sed -n 's/^item=//p' "$RELEASES_CACHE"
+        kv result ok
+        return 0
+    fi
+
+    json="$(http_get "$RELEASES_URL" 30)" || fail "无法获取版本列表（检查网络或代理）"
+    [ -n "$json" ] || fail "版本列表为空"
+
+    tf="$TMP_DIR/.rel_tags.$$"
+    df="$TMP_DIR/.rel_dates.$$"
+    printf '%s' "$json" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+        | sed 's/.*"\([^"]*\)"$/\1/' | grep -E '^v[0-9]' > "$tf" 2>/dev/null
+    printf '%s' "$json" | grep -o '"published_at"[[:space:]]*:[[:space:]]*[^,}]*' \
+        | sed 's/^"published_at"[[:space:]]*:[[:space:]]*//' | tr -d '"' | cut -c1-10 > "$df" 2>/dev/null
+
+    if [ ! -s "$tf" ]; then
+        rm -f "$tf" "$df"
+        fail "解析版本列表失败"
+    fi
+
+    {
+        echo "ts=$now"
+        paste -d'|' "$tf" "$df" 2>/dev/null | while IFS= read -r line; do
+            echo "item=$line"
+        done
+    } > "$RELEASES_CACHE.tmp" 2>/dev/null
+    mv -f "$RELEASES_CACHE.tmp" "$RELEASES_CACHE" 2>/dev/null || true
+    chmod 600 "$RELEASES_CACHE" 2>/dev/null || true
+    rm -f "$tf" "$df"
+
+    sed -n 's/^item=//p' "$RELEASES_CACHE"
+    kv result ok
+}
+
 cmd_update() {
-    local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code
+    local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code want_tag="" api
     while [ $# -gt 0 ]; do
         case "$1" in
             --force) force=1 ;;
             --asset) asset="${2:-}"; shift ;;
             --proxy) GH_PROXY="${2:-}"; shift ;;
+            --tag) want_tag="${2:-}"; shift ;;
         esac
         shift
     done
     [ -n "$asset" ] || asset="$(pick_asset)"
 
-    progress resolve "获取最新版本"
+    api="$API_URL"
+    if [ -n "$want_tag" ]; then
+        case "$want_tag" in
+            v[0-9]*) api="https://api.github.com/repos/OpenListTeam/OpenList/releases/tags/$want_tag" ;;
+            *) fail "版本号格式不正确（应形如 v4.2.9）" ;;
+        esac
+        progress resolve "获取 $want_tag"
+    else
+        progress resolve "获取最新版本"
+    fi
     local json
-    json="$(http_get "$API_URL" 30)" || fail "无法访问 GitHub API"
+    json="$(http_get "$api" 30)" || fail "无法访问 GitHub API"
     tag="$(echo "$json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
     [ -n "$tag" ] || fail "解析最新版本失败"
     cur="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
@@ -682,6 +736,7 @@ case "$cmd" in
     stop) cmd_stop ;;
     restart) cmd_restart ;;
     check) cmd_check ;;
+    versions) cmd_versions ;;
     update) cmd_update "$@" ;;
     logs) cmd_logs "$@" ;;
     config-get) cmd_config_get ;;
@@ -697,7 +752,7 @@ case "$cmd" in
         kv result ok
         ;;
     *)
-        echo "usage: control.sh {status|start|stop|restart|check|update|logs|config-get|config-save|passwd|token|api|migrate-data|migrate-bin|fix-paths|version}"
+        echo "usage: control.sh {status|start|stop|restart|check|versions|update|logs|config-get|config-save|passwd|token|api|migrate-data|migrate-bin|fix-paths|version}"
         exit 2
         ;;
 esac

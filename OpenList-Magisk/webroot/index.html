@@ -25,9 +25,6 @@
     <span class="muted" id="pidText">PID -</span>
   </div>
   <div class="addr" id="addrText">--</div>
-  <div class="meta">
-    <span id="dataDirText">数据目录 -</span>
-  </div>
   <div class="btns">
     <button id="toggleBtn" disabled>启动</button>
     <button class="ghost" id="restartBtn">重启</button>
@@ -36,6 +33,22 @@
     <button class="ghost" id="openBtn">打开网页</button>
     <button class="ghost" id="refreshBtn">刷新状态</button>
   </div>
+</div>
+
+<!-- 目录 -->
+<h2>目录</h2>
+<div class="card">
+  <div class="kv"><span>模块目录</span><span class="path" id="modDirText">-</span></div>
+  <div class="kv"><span>数据目录</span><span class="path" id="dataDirText">-</span></div>
+  <div class="kv"><span>二进制</span><span class="path" id="binText">-</span></div>
+  <div class="hint">点一下路径可复制</div>
+</div>
+
+<!-- 所有版本 -->
+<h2>所有版本</h2>
+<div class="card">
+  <div class="verlist" id="verList">加载中…</div>
+  <div class="hint">点「安装」可切换版本，回退到旧版本会同时改回 module.prop 的版本号。</div>
 </div>
 
 <!-- 更新 -->
@@ -172,9 +185,7 @@
 <!-- 关于 -->
 <h2>关于</h2>
 <div class="card">
-  <div class="kv"><span>模块目录</span><span id="modDirText">-</span></div>
-  <div class="kv"><span>二进制</span><span id="binText">-</span></div>
-  <div class="row" style="margin-top:10px">
+  <div class="row">
     <a class="link" href="https://github.com/Alien-Et/OpenList-Magisk" target="_blank" rel="noreferrer">项目地址</a>
     <a class="link" href="https://github.com/Alien-Et/OpenList-Magisk/releases/latest" target="_blank" rel="noreferrer">Release</a>
   </div>
