@@ -374,11 +374,24 @@
   /* ---------- 绑定 ---------- */
   function init() {
     $('modeChip').textContent = hasKsu ? 'KernelSU / APatch' : '无 root 接口';
-    if (!hasKsu) {
-      $('updateHint').textContent = '当前环境不支持 WebUI 执行命令（需要 KernelSU 或 APatch）。';
-    }
     ['toggleBtn', 'restartBtn', 'checkBtn', 'updateBtn', 'saveCfgBtn', 'pwdBtn', 'migrateDataBtn', 'migrateBinBtn']
-      .forEach(function (id) { $(id).disabled = !hasKsu; });
+      .forEach(function (id) { $(id).disabled = true; });
+
+    if (!hasKsu) {
+      $('stateText').textContent = '未连接';
+      $('addrText').textContent = '需要 KernelSU 或 APatch';
+      $('updateHint').textContent = '当前环境没有 ksu.exec，无法执行命令。请从 KernelSU/APatch 管理器的 WebUI 入口打开。';
+      $('logBox').textContent = '(无 root 接口，无法读取)';
+      return;
+    }
+
+    $('toggleBtn').disabled = false;
+    $('restartBtn').disabled = false;
+    $('checkBtn').disabled = false;
+    $('saveCfgBtn').disabled = false;
+    $('pwdBtn').disabled = false;
+    $('migrateDataBtn').disabled = false;
+    $('migrateBinBtn').disabled = false;
 
     $('toggleBtn').onclick = toggleService;
     $('restartBtn').onclick = restart;
