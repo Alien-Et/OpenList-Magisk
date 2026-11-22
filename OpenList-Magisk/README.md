@@ -16,8 +16,9 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
   - /storage/emulated/0/Android/openlist/
 - **密码定制**：提供初始密码设置选项
 - **动态服务管理**：通过 Magisk/KernelSU/APatch 的"动作"按钮一键控制服务
-- **WebUI 控制台**（KernelSU / APatch）：查看状态、启停、在线更新二进制、改下载配置、改管理员密码、迁移数据/二进制目录
-- **命令行控制**：`control.sh` 三家通用，WebUI 和 action.sh 都调用它
+- **WebUI 控制台**（KernelSU / APatch）：查看状态、启停、在线更新二进制、改下载配置、改管理员账号、存储启停、离线任务、迁移数据/二进制目录、路径自检
+- **命令行控制**：`control.sh` 三家通用，WebUI 也调用它
+- **界面**：毛玻璃 + 大圆角，自动/浅色/深色主题
 - **智能网络适配**：自动识别 WiFi 和移动网络 IP
 - **日志支持**：详细的运行日志记录
 
@@ -131,3 +132,11 @@ sh /data/adb/modules/openlist/control.sh config-get
 
 ## 许可证
 本项目基于 [MIT 许可证](LICENSE) 发布。
+## 文档
+
+- [01. 整体架构](../docs/01.整体架构.md)
+- [02. control 命令](../docs/02.control命令.md)
+- [03. WebUI 界面](../docs/03.WebUI界面.md)
+- [04. 更新与回滚](../docs/04.更新与回滚.md)
+- [05. 迁移与路径](../docs/05.迁移与路径.md)
+- [06. 总结](../docs/06.总结.md)
