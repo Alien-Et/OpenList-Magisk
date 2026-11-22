@@ -249,51 +249,28 @@ if [ -f "$MODROOT/control.sh" ]; then
     chmod 755 "$MODROOT/control.sh" 2>/dev/null || true
 fi
 
-# 选择是否修改密码
+# 选择初始密码
 make_selection "password" "2"
 PASSWORD_OPTION=$?
 
+# OpenList v4.2.10 起，未初始化时不再自动创建 admin（改为等 Web 安装向导）。
+# service.sh 会读取「初始密码.txt」并通过 OPENLIST_ADMIN_PASSWORD 让首次启动
+# 直接建出 admin；这里只负责写文件。
+# 注意：不要再用 `openlist admin set`——admin 不存在时它会静默失败（只写日志），
+# 看起来成功但密码根本没生效。
+mkdir -p "$DATA_DIR" 2>/dev/null
+
 if [ "$PASSWORD_OPTION" = "2" ]; then
-    ui_print " "
-    ui_print "🔄 正在修改初始密码..."
-    
-    # 使用绝对路径执行命令
-    COMMAND_SUCCESS=0
-    case $INSTALL_OPTION in
-        1) 
-            # 二进制文件在 /data/adb/openlist/bin
-            /data/adb/openlist/bin/openlist admin set admin --data "$DATA_DIR"
-            COMMAND_SUCCESS=$?
-            ;;
-        2) 
-            # 二进制文件在模块目录/bin
-            "$MODROOT/bin/openlist" admin set admin --data "$DATA_DIR"
-            COMMAND_SUCCESS=$?
-            ;;
-        3) 
-            # 二进制文件在模块目录/system/bin/
-            "$MODROOT/system/bin/openlist" admin set admin --data "$DATA_DIR"
-            COMMAND_SUCCESS=$?
-            ;;
-    esac
-    
-    if [ $COMMAND_SUCCESS -eq 0 ]; then
-        ui_print "✅ 密码已修改为：admin"
-        
-        # 确保数据目录存在
-        mkdir -p "$DATA_DIR"
-        
-        # 写入密码到初始密码.txt
-        if echo "admin" > "$DATA_DIR/初始密码.txt"; then
-            ui_print "✅ 已将密码保存到：$DATA_DIR/初始密码.txt"
-        else
-            ui_print "❌ 密码文件写入失败"
-        fi
+    if echo "admin" > "$DATA_DIR/初始密码.txt"; then
+        chmod 600 "$DATA_DIR/初始密码.txt" 2>/dev/null
+        ui_print "✅ 初始密码已设为：admin"
+        ui_print "   已保存到：$DATA_DIR/初始密码.txt"
     else
-        ui_print "❌ 密码修改失败"
+        ui_print "❌ 密码文件写入失败（数据目录不可写？）"
     fi
 else
-    ui_print "✓ 跳过密码修改"
+    ui_print "✓ 首次启动会自动生成随机密码"
+    ui_print "   密码保存在：$DATA_DIR/初始密码.txt"
 fi
 
 # 完成安装

@@ -271,6 +271,21 @@ if [ $ELAPSED -ge $MAX_WAIT ]; then
 fi
 
 log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
+
+# OpenList v4.2.10 起，未初始化时不再自动创建 admin（改为等 Web 安装向导）。
+# 这里通过 OPENLIST_ADMIN_PASSWORD 让它首次启动就把 admin 建出来，
+# 否则所有 /api/admin/* 都会返回 500 record not found（存储、任务、配置全挂）。
+PWD_FILE="$DATA_DIR/初始密码.txt"
+if [ ! -f "$PWD_FILE" ]; then
+    PWD_RAND="$( (cat /dev/urandom 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 12) 2>/dev/null )"
+    [ -n "$PWD_RAND" ] || PWD_RAND="admin$(date +%s | tail -c 5)"
+    echo "$PWD_RAND" > "$PWD_FILE" 2>/dev/null
+    chmod 600 "$PWD_FILE" 2>/dev/null
+    log "未找到初始密码，已生成并写入 $PWD_FILE"
+fi
+OPENLIST_ADMIN_PASSWORD="$(cat "$PWD_FILE" 2>/dev/null)"
+[ -n "$OPENLIST_ADMIN_PASSWORD" ] && export OPENLIST_ADMIN_PASSWORD
+
 $OPENLIST_BINARY server --data "$DATA_DIR" &
 OPENLIST_PID=$!
 

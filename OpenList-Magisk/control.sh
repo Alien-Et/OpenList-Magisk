@@ -294,12 +294,15 @@ cmd_versions() {
 
     tf="$TMP_DIR/.rel_tags.$$"
     df="$TMP_DIR/.rel_dates.$$"
-    printf '%s' "$json" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
-        | sed 's/.*"\([^"]*\)"$/\1/' | grep -E '^v[0-9]' > "$tf" 2>/dev/null
-    printf '%s' "$json" | grep -o '"published_at"[[:space:]]*:[[:space:]]*[^,}]*' \
-        | sed 's/^"published_at"[[:space:]]*:[[:space:]]*//' | tr -d '"' | cut -c1-10 > "$df" 2>/dev/null
+    # 用 tr 把 JSON 拆成一行一个字段，避免依赖 grep -o 与复杂正则
+    printf '%s' "$json" | tr ',' '\n' | grep '"tag_name"' \
+        | sed 's/.*"tag_name"[^"]*"\([^"]*\)".*/\1/' | grep -E '^v[0-9]' > "$tf" 2>/dev/null
+    printf '%s' "$json" | tr ',' '\n' | grep '"published_at"' \
+        | sed 's/.*"published_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/; s/.*"published_at".*//' \
+        | cut -c1-10 > "$df" 2>/dev/null
 
     if [ ! -s "$tf" ]; then
+        kv debug "$(printf '%s' "$json" | head -c 200)"
         rm -f "$tf" "$df"
         fail "解析版本列表失败"
     fi
@@ -578,7 +581,7 @@ cmd_passwd() { # b64pass [b64user]
 
 # ---------- 迁移 ----------
 cmd_migrate_data() {
-    local b64="${1:-}" new old was_running=0 a b old_esc new_esc
+    local b64="${1:-}" new old was_running=0 a b old_esc new_esc extra before=0
     [ -n "$b64" ] || fail "缺少目标目录"
     new="$(echo "$b64" | base64 -d 2>/dev/null)"
     old="$DATA_DIR"
@@ -594,10 +597,14 @@ cmd_migrate_data() {
     case "$DATA_DIR" in
         "$new"/*) fail "目标不能是当前数据目录的父目录" ;;
     esac
-    if [ -d "$new" ] && [ -n "$(ls -A "$new" 2>/dev/null)" ]; then
-        fail "目标目录非空"
+    if [ -d "$new" ]; then
+        # 安装选项 1 会把二进制放在 <数据目录>/bin，所以目标里只有 bin 时仍可用
+        extra="$(ls -A "$new" 2>/dev/null | grep -vx 'bin' | head -n 1)"
+        [ -n "$extra" ] && fail "目标目录非空（含 $extra）"
     fi
     mkdir -p "$new" 2>/dev/null || fail "无法创建目标目录"
+    # 记录目标原有文件数，后面按增量比对，避免把 bin/openlist 算成复制过来的
+    before="$(find "$new" -type f 2>/dev/null | wc -l | tr -d ' ')"
 
     [ -n "$(openlist_pid)" ] && was_running=1
     [ "$was_running" = "1" ] && cmd_stop >/dev/null 2>&1
@@ -610,9 +617,9 @@ cmd_migrate_data() {
 
     a="$(find "$DATA_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')"
     b="$(find "$new" -type f 2>/dev/null | wc -l | tr -d ' ')"
-    [ "$a" = "$b" ] || {
+    [ "$a" = "$((b - before))" ] || {
         [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
-        fail "文件数不一致（$a != $b）"
+        fail "文件数不一致（源 $a，新增 $((b - before))）"
     }
     if [ -f "$DATA_DIR/data.db" ] && have md5sum; then
         a="$(md5sum "$DATA_DIR/data.db" 2>/dev/null | awk '{print $1}')"

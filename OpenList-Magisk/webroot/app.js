@@ -212,6 +212,27 @@
     };
   }
 
+  /* 迁移页只显示「非当前」的候选路径 */
+  function filterChips(boxId, cur) {
+    var box = $(boxId);
+    if (!box) return;
+    box.querySelectorAll('button[data-path]').forEach(function (b) {
+      b.style.display = (b.dataset.path === cur) ? 'none' : '';
+    });
+  }
+
+  /* 把 admin API 的失败原因翻译成人话 */
+  function apiHint(res) {
+    var msg = (res && res.message) || '';
+    if (/record not found/i.test(msg)) {
+      return '管理员账号尚未初始化：重启一次服务会自动创建，初始密码见 初始密码.txt';
+    }
+    if (/token is invalidated|Guest user is disabled|not admin/i.test(msg)) {
+      return '管理员 token 失效：重启服务后重试';
+    }
+    return msg || '读取失败（服务未运行？）';
+  }
+
   /* ---------- 渲染 ---------- */
   function renderStatus(kv) {
     state.running = kv.running || '0';
@@ -236,6 +257,9 @@
     b.className = state.running === '1' ? 'danger' : '';
     b.disabled = !hasKsu;
     $('restartBtn').disabled = !hasKsu;
+
+    filterChips('dataDirChips', kv.data_dir);
+    filterChips('binChips', kv.bin);
   }
 
   function renderConfig(kv) {
@@ -357,15 +381,18 @@
   }
 
   /* ---------- 更新 ---------- */
-  function checkUpdate() {
+  function checkUpdate(silent) {
     var b = $('checkBtn');
-    b.disabled = true;
-    $('updateHint').textContent = '正在查询 GitHub…';
-    ctl('check', 60000).then(function (r) {
+    if (!silent) {
+      b.disabled = true;
+      $('updateHint').textContent = '正在查询 GitHub…';
+    }
+    return ctl('check', 60000).then(function (r) {
       var kv = r.kv;
       if (kv.result !== 'ok') {
-        $('updateHint').textContent = '检查失败';
-        return toast(kv.error || '检查失败', true);
+        $('updateHint').textContent = '检查更新失败';
+        if (!silent) toast(kv.error || '检查失败', true);
+        return;
       }
       $('latestVer').textContent = kv.latest || '-';
       $('assetText').textContent = kv.asset || '-';
@@ -375,7 +402,7 @@
       $('updateBtn').textContent = up ? '已是最新' : '立即更新';
       $('updateHint').textContent = up ? '当前已是最新版本。' : '发现新版本，可直接更新。';
     }).catch(function (e) {
-      toast('检查失败: ' + e, true);
+      if (!silent) toast('检查失败: ' + e, true);
     }).finally(function () { b.disabled = !hasKsu; });
   }
 
@@ -454,7 +481,9 @@
         return l && l.indexOf('=') < 0;
       });
       if (!rows.length) {
-        box.textContent = r.kv.error || '没有获取到版本列表';
+        var msg = r.kv.error || '没有获取到版本列表';
+        if (r.kv.debug) msg += '\n' + r.kv.debug;
+        box.textContent = msg;
         return;
       }
       var cur = state.version || '';
@@ -602,17 +631,19 @@
   function loadStorages() {
     var box = $('storageList');
     box.textContent = '加载中…';
-    api('GET', '/api/admin/storage/list').then(function (res) {
-      if (res.code !== 200 || !Array.isArray(res.data)) {
-        box.textContent = res.message || '读取失败（服务未运行？）';
+    api('GET', '/api/admin/storage/list?page=1&per_page=100').then(function (res) {
+      var list = Array.isArray(res.data) ? res.data
+        : (res.data && Array.isArray(res.data.content) ? res.data.content : null);
+      if (res.code !== 200 || !list) {
+        box.textContent = apiHint(res);
         return;
       }
       box.textContent = '';
-      if (!res.data.length) {
+      if (!list.length) {
         box.textContent = '还没有配置存储。';
         return;
       }
-      res.data.forEach(function (s) {
+      list.forEach(function (s) {
         var row = document.createElement('div');
         row.className = 'kv';
 
@@ -663,17 +694,19 @@
   function loadTasks() {
     var box = $('taskList');
     box.textContent = '加载中…';
-    api('GET', '/api/admin/task/offline_download/undone').then(function (res) {
-      if (res.code !== 200 || !Array.isArray(res.data)) {
-        box.textContent = res.message || '读取失败（服务未运行？）';
+    api('GET', '/api/admin/task/offline_download/undone?page=1&per_page=100').then(function (res) {
+      var list = Array.isArray(res.data) ? res.data
+        : (res.data && Array.isArray(res.data.content) ? res.data.content : null);
+      if (res.code !== 200 || !list) {
+        box.textContent = apiHint(res);
         return;
       }
       box.textContent = '';
-      if (!res.data.length) {
-        box.textContent = '没有进行中的离线任务。';
+      if (!list.length) {
+        box.textContent = '没有进行中的任务。';
         return;
       }
-      res.data.forEach(function (t) {
+      list.forEach(function (t) {
         var row = document.createElement('div');
         row.className = 'kv';
 
@@ -854,7 +887,13 @@
       });
     };
 
-    refresh().then(loadVersions).then(loadConfig).then(loadLog).then(loadStorages).then(loadTasks);
+    refresh()
+      .then(function () { return checkUpdate(true); })
+      .then(loadVersions)
+      .then(loadConfig)
+      .then(loadLog)
+      .then(loadStorages)
+      .then(loadTasks);
   }
 
   if (document.readyState === 'loading') {
