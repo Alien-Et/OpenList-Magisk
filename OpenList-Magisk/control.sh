@@ -178,6 +178,11 @@ cmd_status() {
     kv result ok
 }
 
+update_desc_stopped() {
+    [ -f "$MODULE_PROP" ] || return 0
+    sed -i 's|^description=.*|description=【已停止】请点击"操作"启动程序。项目地址：https://github.com/Alien-Et/OpenList-Magisk|' "$MODULE_PROP" 2>/dev/null || true
+}
+
 cmd_stop() {
     local pid i=0
     pid="$(openlist_pid)"
@@ -190,6 +195,7 @@ cmd_stop() {
         [ -n "$(openlist_pid)" ] && pkill -9 -f "$OPENLIST_BINARY" 2>/dev/null || true
         sleep 0.3
     fi
+    update_desc_stopped
     kv stopped 1
     kv result ok
 }
