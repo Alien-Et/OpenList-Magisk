@@ -92,6 +92,7 @@ get_token() {
     [ -z "$t" ] && t="$(sed -n 's/^TOKEN=//p' "$DATA_DIR/offline.conf" 2>/dev/null | head -n 1)"
     [ -n "$t" ] || return 1
     { echo "token=$t"; echo "ts=$(date +%s 2>/dev/null || echo 0)"; } > "$TOKEN_CACHE" 2>/dev/null || true
+    chmod 600 "$TOKEN_CACHE" 2>/dev/null || true
     printf '%s' "$t"
 }
 
