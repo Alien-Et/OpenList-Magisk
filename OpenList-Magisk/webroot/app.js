@@ -9,6 +9,40 @@
   var PROGRESS = '/data/local/tmp/openlist_update.progress';
   var hasKsu = typeof window.ksu !== 'undefined';
 
+  /* ---------- 主题：自动 / 浅色 / 深色 ---------- */
+  var THEME_KEY = 'openlist.theme';
+  var themeMode = 'auto';
+  try { themeMode = localStorage.getItem(THEME_KEY) || 'auto'; } catch (e) {}
+  var mql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function effectiveDark() {
+    if (themeMode === 'dark') return true;
+    if (themeMode === 'light') return false;
+    return !!(mql && mql.matches);
+  }
+
+  function applyTheme() {
+    document.documentElement.setAttribute('data-theme', effectiveDark() ? 'dark' : 'light');
+    var btn = document.getElementById('themeBtn');
+    if (btn) {
+      btn.textContent = themeMode === 'auto' ? '自动' : (themeMode === 'light' ? '浅色' : '深色');
+      btn.title = '主题：' + btn.textContent + '（点击切换）';
+    }
+  }
+
+  function cycleTheme() {
+    themeMode = themeMode === 'auto' ? 'light' : (themeMode === 'light' ? 'dark' : 'auto');
+    try { localStorage.setItem(THEME_KEY, themeMode); } catch (e) {}
+    applyTheme();
+  }
+
+  if (mql) {
+    var onSchemeChange = function () { if (themeMode === 'auto') applyTheme(); };
+    if (mql.addEventListener) mql.addEventListener('change', onSchemeChange);
+    else if (mql.addListener) mql.addListener(onSchemeChange);
+  }
+  applyTheme();
+
   var $ = function (id) { return document.getElementById(id); };
   var state = { running: '0', port: '5244', ip: '127.0.0.1', pid: '-', version: '-' };
   var progTimer = null;
@@ -506,6 +540,8 @@
 
   /* ---------- 绑定 ---------- */
   function init() {
+    $('themeBtn').onclick = cycleTheme;
+    applyTheme();
     $('modeChip').textContent = hasKsu ? 'KernelSU / APatch' : '无 root 接口';
     ['toggleBtn', 'restartBtn', 'checkBtn', 'updateBtn', 'saveCfgBtn', 'pwdBtn', 'migrateDataBtn', 'migrateBinBtn']
       .forEach(function (id) { $(id).disabled = true; });
