@@ -85,8 +85,10 @@
 </div>
 
 <!-- 改密 -->
-<h2>管理员密码</h2>
+<h2>管理员账号</h2>
 <div class="card">
+  <label>用户名（留空则不修改）</label>
+  <input id="newUser" type="text" autocomplete="username" placeholder="admin">
   <label>新密码</label>
   <input id="newPwd" type="password" autocomplete="new-password" placeholder="至少 8 位">
   <label>确认新密码</label>
@@ -94,6 +96,25 @@
   <div class="hint">改密时会先停止服务，完成后自动启动。</div>
   <div class="btns">
     <button class="warn" id="pwdBtn">修改密码</button>
+  </div>
+</div>
+
+<!-- 存储 -->
+<h2>存储</h2>
+<div class="card">
+  <div id="storageList" class="muted">加载中…</div>
+  <div class="btns">
+    <button class="ghost" id="storageRefresh">刷新</button>
+    <button class="ghost" id="storageReload">全部重载</button>
+  </div>
+</div>
+
+<!-- 离线任务 -->
+<h2>离线任务</h2>
+<div class="card">
+  <div id="taskList" class="muted">加载中…</div>
+  <div class="btns">
+    <button class="ghost" id="taskRefresh">刷新</button>
   </div>
 </div>
 

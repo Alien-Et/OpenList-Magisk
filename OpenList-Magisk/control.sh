@@ -59,6 +59,42 @@ OPENLIST_BINARY="$(get_var OPENLIST_BINARY)"
 [ -n "$DATA_DIR" ] || DATA_DIR="/data/adb/openlist"
 [ -n "$OPENLIST_BINARY" ] || OPENLIST_BINARY="$MODDIR/bin/openlist"
 
+# ---------- token / API ----------
+TOKEN_CACHE="${TOKEN_CACHE:-/data/local/tmp/openlist_token.cache}"
+
+json_escape() {
+    printf '%s' "$1" | awk 'BEGIN{ORS=""} {
+        gsub(/\\/,"\\\\");
+        gsub(/"/,"\\\"");
+        gsub(/\t/,"\\t");
+        gsub(/\r/,"\\r");
+        if (NR > 1) printf "\\n";
+        printf "%s", $0
+    }'
+}
+
+sed_escape() { printf '%s' "$1" | sed -e 's/[&\\|]/\\&/g'; }
+
+get_token() {
+    local t="" now ts
+    if [ -f "$TOKEN_CACHE" ]; then
+        now="$(date +%s 2>/dev/null || echo 0)"
+        ts="$(sed -n 's/^ts=//p' "$TOKEN_CACHE" 2>/dev/null | head -n 1)"
+        if [ -n "$ts" ] && [ "$((now - ts))" -lt 120 ] 2>/dev/null; then
+            t="$(sed -n 's/^token=//p' "$TOKEN_CACHE" 2>/dev/null | head -n 1)"
+        fi
+    fi
+    [ -n "$t" ] && { printf '%s' "$t"; return 0; }
+
+    if [ -x "$OPENLIST_BINARY" ]; then
+        t="$("$OPENLIST_BINARY" admin token --data "$DATA_DIR" 2>/dev/null | sed -n 's/^Admin token: //p' | head -n 1)"
+    fi
+    [ -z "$t" ] && t="$(sed -n 's/^TOKEN=//p' "$DATA_DIR/offline.conf" 2>/dev/null | head -n 1)"
+    [ -n "$t" ] || return 1
+    { echo "token=$t"; echo "ts=$(date +%s 2>/dev/null || echo 0)"; } > "$TOKEN_CACHE" 2>/dev/null || true
+    printf '%s' "$t"
+}
+
 # ---------- 网络 ----------
 http_get() { # url [timeout]
     local t="${2:-20}"
@@ -360,21 +396,90 @@ cmd_config_save() {
     kv result ok
 }
 
+# ---------- API 转发 ----------
+cmd_api() {
+    local method="${1:-GET}" path="${2:-}" b64="${3:-}" token port body
+    case "$path" in /api/*) ;; *) fail "非法 API 路径" ;; esac
+    case "$method" in GET|POST) ;; *) fail "不支持的方法" ;; esac
+    token="$(get_token)" || fail "无法获取 admin token（服务是否在运行？）"
+    port="$(detect_port)"
+    body=""
+    [ -n "$b64" ] && body="$(echo "$b64" | base64 -d 2>/dev/null)"
+
+    if have curl; then
+        if [ "$method" = "GET" ]; then
+            curl -s -m 20 -H "Authorization: $token" "http://127.0.0.1:$port$path"
+        else
+            curl -s -m 20 -X POST -H "Authorization: $token" -H "Content-Type: application/json" \
+                --data-binary "$body" "http://127.0.0.1:$port$path"
+        fi
+        return
+    fi
+    if [ -n "$BB" ]; then
+        if [ "$method" = "GET" ]; then
+            "$BB" wget -q -T 20 -O - --header="Authorization: $token" "http://127.0.0.1:$port$path"
+        else
+            "$BB" wget -q -T 20 -O - --header="Authorization: $token" \
+                --header="Content-Type: application/json" --post-data="$body" "http://127.0.0.1:$port$path"
+        fi
+        return
+    fi
+    fail "需要 curl 或 busybox wget 才能调用 API"
+}
+
 # ---------- 密码 ----------
-cmd_passwd() {
-    local b64="${1:-}" p was_running=0
+cmd_passwd() { # b64pass [b64user]
+    local b64="${1:-}" b64u="${2:-}" p u token port obj new resp was_running=0
     [ -n "$b64" ] || fail "缺少新密码"
     p="$(echo "$b64" | base64 -d 2>/dev/null)"
     [ -n "$p" ] || fail "密码为空或解码失败"
+    u=""
+    if [ -n "$b64u" ]; then
+        u="$(echo "$b64u" | base64 -d 2>/dev/null)"
+        echo "$u" | grep -qE '^[A-Za-z0-9_.-]{3,32}$' || fail "用户名不合法"
+    fi
 
+    # 优先 API：在线写库，不需要重启
+    if token="$(get_token 2>/dev/null)"; then
+        port="$(detect_port)"
+        if have curl; then
+            obj="$(curl -s -m 15 -H "Authorization: $token" "http://127.0.0.1:$port/api/admin/user/get?id=1" 2>/dev/null)"
+            # 取出 data 里的 User 对象，避免把 {"code":200,"data":...} 整个提交
+            new="$(echo "$obj" | sed -n 's/^.*"data":\({.*}\)[[:space:]]*}$/\1/p')"
+            if [ -n "$new" ] && echo "$obj" | grep -q '"code":200'; then
+                if [ -n "$u" ]; then
+                    new="$(echo "$new" | sed "s|\"username\":\"[^\"]*\"|\"username\":\"$(sed_escape "$(json_escape "$u")")\"|")"
+                fi
+                new="$(echo "$new" | sed "s|\"password\":\"[^\"]*\"|\"password\":\"$(sed_escape "$(json_escape "$p")")\"|")"
+                resp="$(curl -s -m 15 -X POST -H "Authorization: $token" -H "Content-Type: application/json" \
+                    --data-binary "$new" "http://127.0.0.1:$port/api/admin/user/update" 2>/dev/null)"
+                if echo "$resp" | grep -q '"code":200'; then
+                    kv method api
+                    kv result ok
+                    return 0
+                fi
+                kv api_error "$(echo "$resp" | head -c 300)"
+            fi
+        fi
+    fi
+
+    # 兜底 CLI：需要停服务
     [ -n "$(openlist_pid)" ] && was_running=1
     [ "$was_running" = "1" ] && cmd_stop >/dev/null 2>&1
-
     "$OPENLIST_BINARY" admin set "$p" --data "$DATA_DIR" >/dev/null 2>&1 || {
         [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
-        fail "改密失败（检查二进制和数据目录）"
+        fail "改密失败（API 不可用，CLI 也失败）"
     }
-
+    kv method cli
+    if [ -n "$u" ]; then
+        if have sqlite3 && [ -f "$DATA_DIR/data.db" ]; then
+            sqlite3 "$DATA_DIR/data.db" "UPDATE x_users SET username='$u' WHERE id=1;" 2>/dev/null || true
+            kv user_updated 1
+        else
+            kv user_updated 0
+            kv user_hint "无 sqlite3，用户名未改，请用 API 或网页端修改"
+        fi
+    fi
     [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
     kv result ok
 }
@@ -476,6 +581,8 @@ case "$cmd" in
     config-get) cmd_config_get ;;
     config-save) cmd_config_save "$@" ;;
     passwd) cmd_passwd "$@" ;;
+    token) get_token && echo && kv result ok || fail "无法获取 token" ;;
+    api) cmd_api "$@" ;;
     migrate-data) cmd_migrate_data "$@" ;;
     migrate-bin) cmd_migrate_bin "$@" ;;
     version)
@@ -483,7 +590,7 @@ case "$cmd" in
         kv result ok
         ;;
     *)
-        echo "usage: control.sh {status|start|stop|restart|check|update|logs|config-get|config-save|passwd|migrate-data|migrate-bin|version}"
+        echo "usage: control.sh {status|start|stop|restart|check|update|logs|config-get|config-save|passwd|token|api|migrate-data|migrate-bin|version}"
         exit 2
         ;;
 esac

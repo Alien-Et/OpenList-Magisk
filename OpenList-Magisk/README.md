@@ -61,7 +61,9 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 - 启停/重启服务
 - 版本与更新：拉取 OpenList 官方 Release，按 CPU 架构选择 `android-arm64 / android-arm / android-amd64 / android-386`，下载后自动停止服务、替换二进制、重新启动（失败可用 `.bak` 回滚）
 - 下载配置：修改 `offline.conf` 的端口、Token、目标路径、离线引擎、删除策略
-- 修改管理员密码
+- 管理员账号：改用户名、改密码（走 OpenList 管理 API，在线生效，不重启）
+- 存储：列表、启用/禁用、全部重载
+- 离线任务：查看进行中的任务、取消
 - 迁移数据目录 / 二进制路径
 - 查看和清空 `service.log`
 

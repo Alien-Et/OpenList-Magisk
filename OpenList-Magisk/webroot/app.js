@@ -72,6 +72,19 @@
     });
   }
 
+  /* 调 OpenList 管理 API，返回解析后的 JSON */
+  function api(method, path, body) {
+    var args = 'api ' + method + " '" + path + "'";
+    if (body !== undefined) args += " '" + b64utf8(JSON.stringify(body)) + "'";
+    return sh("sh '" + CONTROL + "' " + args, 30000).then(function (r) {
+      try {
+        return JSON.parse(r.stdout);
+      } catch (e) {
+        return { code: -1, message: (r.stderr || r.stdout || '响应解析失败').slice(0, 200) };
+      }
+    });
+  }
+
   /* ---------- 渲染 ---------- */
   function renderStatus(kv) {
     state.running = kv.running || '0';
@@ -278,26 +291,146 @@
 
   /* ---------- 密码 ---------- */
   function changePassword() {
+    var uname = $('newUser').value.trim();
     var p1 = $('newPwd').value;
     var p2 = $('newPwd2').value;
+    if (uname && !/^[A-Za-z0-9_.-]{3,32}$/.test(uname)) return toast('用户名不合法（3-32 位字母数字 _ . -）', true);
     if (p1.length < 8) return toast('密码至少 8 位', true);
     if (p1 !== p2) return toast('两次输入不一致', true);
+
+    var args = "passwd '" + b64utf8(p1) + "'";
+    if (uname) args += " '" + b64utf8(uname) + "'";
 
     var b = $('pwdBtn');
     b.disabled = true;
     b.textContent = '修改中…';
-    ctl("passwd '" + b64utf8(p1) + "'", 180000).then(function (r) {
+    ctl(args, 180000).then(function (r) {
       if (r.kv.result === 'ok') {
-        toast('密码已修改');
+        var via = r.kv.method === 'api' ? '在线生效，未重启' : 'CLI 方式，已重启服务';
+        toast((uname ? '用户名和密码已更新' : '密码已更新') + '（' + via + '）');
         $('newPwd').value = '';
         $('newPwd2').value = '';
+        $('newUser').value = '';
+        if (uname) $('newUser').placeholder = uname;
       } else {
-        toast(r.kv.error || '改密失败', true);
+        toast(r.kv.error || r.kv.api_error || '修改失败', true);
       }
       return refresh();
     }).finally(function () {
       b.disabled = !hasKsu;
       b.textContent = '修改密码';
+    });
+  }
+
+  /* ---------- 存储 ---------- */
+  function loadStorages() {
+    var box = $('storageList');
+    box.textContent = '加载中…';
+    api('GET', '/api/admin/storage/list').then(function (res) {
+      if (res.code !== 200 || !Array.isArray(res.data)) {
+        box.textContent = res.message || '读取失败（服务未运行？）';
+        return;
+      }
+      box.textContent = '';
+      if (!res.data.length) {
+        box.textContent = '还没有配置存储。';
+        return;
+      }
+      res.data.forEach(function (s) {
+        var row = document.createElement('div');
+        row.className = 'kv';
+
+        var left = document.createElement('span');
+        left.textContent = (s.mount_path || '/') + ' · ' + (s.driver || '?');
+
+        var right = document.createElement('span');
+        right.style.cssText = 'display:flex;align-items:center;gap:8px;justify-content:flex-end';
+
+        var badge = document.createElement('span');
+        badge.className = 'badge ' + (s.disabled ? 'err' : 'ok');
+        badge.textContent = s.disabled ? '已禁用' : '启用';
+
+        var btn = document.createElement('button');
+        btn.className = 'ghost';
+        btn.style.cssText = 'min-width:auto;padding:5px 10px;font-size:12px;min-height:32px';
+        btn.textContent = s.disabled ? '启用' : '禁用';
+        btn.onclick = function () { toggleStorage(s, btn); };
+
+        right.appendChild(badge);
+        right.appendChild(btn);
+        row.appendChild(left);
+        row.appendChild(right);
+        box.appendChild(row);
+      });
+    });
+  }
+
+  function toggleStorage(s, btn) {
+    var path = s.disabled ? '/api/admin/storage/enable' : '/api/admin/storage/disable';
+    btn.disabled = true;
+    api('POST', path, { id: s.id }).then(function (res) {
+      toast(res.code === 200 ? (s.disabled ? '已启用' : '已禁用') : (res.message || '操作失败'), res.code !== 200);
+      loadStorages();
+    });
+  }
+
+  function reloadStorages() {
+    var b = $('storageReload');
+    b.disabled = true;
+    api('POST', '/api/admin/storage/load_all', {}).then(function (res) {
+      toast(res.code === 200 ? '已触发重载' : (res.message || '重载失败'), res.code !== 200);
+      loadStorages();
+    }).finally(function () { b.disabled = !hasKsu; });
+  }
+
+  /* ---------- 离线任务 ---------- */
+  function loadTasks() {
+    var box = $('taskList');
+    box.textContent = '加载中…';
+    api('GET', '/api/admin/task/offline_download/undone').then(function (res) {
+      if (res.code !== 200 || !Array.isArray(res.data)) {
+        box.textContent = res.message || '读取失败（服务未运行？）';
+        return;
+      }
+      box.textContent = '';
+      if (!res.data.length) {
+        box.textContent = '没有进行中的离线任务。';
+        return;
+      }
+      res.data.forEach(function (t) {
+        var row = document.createElement('div');
+        row.className = 'kv';
+
+        var left = document.createElement('span');
+        left.textContent = (t.name || t.id) + ' · ' + (t.status || '');
+
+        var right = document.createElement('span');
+        right.style.cssText = 'display:flex;align-items:center;gap:8px;justify-content:flex-end';
+
+        var pct = document.createElement('span');
+        pct.className = 'muted';
+        pct.textContent = Math.round(t.progress || 0) + '%';
+
+        var btn = document.createElement('button');
+        btn.className = 'danger';
+        btn.style.cssText = 'min-width:auto;padding:5px 10px;font-size:12px;min-height:32px';
+        btn.textContent = '取消';
+        btn.onclick = function () { cancelTask(t, btn); };
+
+        right.appendChild(pct);
+        right.appendChild(btn);
+        row.appendChild(left);
+        row.appendChild(right);
+        box.appendChild(row);
+      });
+    });
+  }
+
+  function cancelTask(t, btn) {
+    btn.disabled = true;
+    api('POST', '/api/admin/task/offline_download/cancel', { id: t.id }).then(function (res) {
+      toast(res.code === 200 ? '已取消' : (res.message || '取消失败'), res.code !== 200);
+      loadTasks();
     });
   }
 
@@ -382,6 +515,8 @@
       $('addrText').textContent = '需要 KernelSU 或 APatch';
       $('updateHint').textContent = '当前环境没有 ksu.exec，无法执行命令。请从 KernelSU/APatch 管理器的 WebUI 入口打开。';
       $('logBox').textContent = '(无 root 接口，无法读取)';
+      $('storageList').textContent = '(无 root 接口，无法读取)';
+      $('taskList').textContent = '(无 root 接口，无法读取)';
       return;
     }
 
@@ -404,6 +539,9 @@
     $('migrateBinBtn').onclick = migrateBin;
     $('logRefresh').onclick = loadLog;
     $('logClear').onclick = clearLog;
+    $('storageRefresh').onclick = loadStorages;
+    $('storageReload').onclick = reloadStorages;
+    $('taskRefresh').onclick = loadTasks;
     $('openBtn').onclick = function () {
       if (state.running !== '1') return toast('服务未运行', true);
       var url = 'http://' + state.ip + ':' + state.port;
@@ -412,7 +550,7 @@
       });
     };
 
-    refresh().then(loadConfig).then(loadLog);
+    refresh().then(loadConfig).then(loadLog).then(loadStorages).then(loadTasks);
   }
 
   if (document.readyState === 'loading') {
