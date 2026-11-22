@@ -2,6 +2,8 @@
 # shellcheck shell=ash
 # action.sh for OpenList Magisk Module
 MODDIR="${0%/*}"
+[ -d "$MODDIR" ] || MODDIR="."
+MODDIR="$(cd "$MODDIR" 2>/dev/null && pwd)" || MODDIR="/data/adb/modules/openlist"
 MODULE_PROP="$MODDIR/module.prop"
 SERVICE_SH="$MODDIR/service.sh"
 OPENLIST_BINARY="__PLACEHOLDER_BINARY_PATH__"

@@ -21,7 +21,8 @@
 set -u
 
 MODDIR="${0%/*}"
-[ -d "$MODDIR" ] || MODDIR="/data/adb/modules/openlist"
+[ -d "$MODDIR" ] || MODDIR="."
+MODDIR="$(cd "$MODDIR" 2>/dev/null && pwd)" || MODDIR="/data/adb/modules/openlist"
 [ -f "$MODDIR/service.sh" ] || MODDIR="/data/adb/modules/openlist"
 
 SERVICE_SH="$MODDIR/service.sh"
@@ -54,8 +55,18 @@ find_busybox() {
 BB="$(find_busybox 2>/dev/null || true)"
 
 get_var() { sed -n "s/^$1=\"\\(.*\\)\"/\\1/p" "$SERVICE_SH" 2>/dev/null | head -n 1; }
-DATA_DIR="$(get_var DATA_DIR)"
-OPENLIST_BINARY="$(get_var OPENLIST_BINARY)"
+# service.sh 里选项 2/3 存的是字面量 $MODDIR/...（安装时用单引号写入，
+# 运行时由 service.sh 自己展开）。从文件文本取出后不会二次展开，
+# 必须手工替换成真实模块目录，否则 [ -f ] 判定必然失败。
+expand_moddir() {
+    case "$1" in
+        '$MODDIR'*) printf '%s' "$MODDIR${1#\$MODDIR}" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+DATA_DIR="$(expand_moddir "$(get_var DATA_DIR)")"
+OPENLIST_BINARY="$(expand_moddir "$(get_var OPENLIST_BINARY)")"
 [ -n "$DATA_DIR" ] || DATA_DIR="/data/adb/openlist"
 [ -n "$OPENLIST_BINARY" ] || OPENLIST_BINARY="$MODDIR/bin/openlist"
 

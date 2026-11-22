@@ -3,6 +3,10 @@
 # service.sh for OpenList Magisk Module
 
 MODDIR="${0%/*}"
+# 支持相对路径调用（sh service.sh / sh modpath/service.sh）：统一转成绝对目录，
+# 否则 ${0%/*} 会得到 "service.sh" 或 "modpath" 这种相对值，日志/临时文件全部写错位置
+[ -d "$MODDIR" ] || MODDIR="."
+MODDIR="$(cd "$MODDIR" 2>/dev/null && pwd)" || MODDIR="/data/adb/modules/openlist"
 DATA_DIR="__PLACEHOLDER_DATA_DIR__"
 OPENLIST_BINARY="__PLACEHOLDER_BINARY_PATH__"
 MODULE_PROP_FILE="$MODDIR/module.prop"

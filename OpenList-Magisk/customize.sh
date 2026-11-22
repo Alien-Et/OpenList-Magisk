@@ -12,6 +12,10 @@ else
 fi
 #==== 侦探结束 ====
 
+# Magisk/KernelSU 安装环境只提供 MODPATH/MODULEROOT，没有 MODDIR。
+# 菜单和 BINARY_SERVICE_PATH 里用到的 $MODDIR 必须先补齐，否则菜单会显示成 "2、/bin"。
+MODDIR="${MODDIR:-$MODROOT}"
+
 ui_print "正在安装 OpenList Magisk 模块..."
 
 # 检测设备架构
@@ -23,9 +27,9 @@ BINARY_NAME="openlist"
 
 # Code from NGA SDK (https://github.com/TianwanTW/NGA-SDK/blob/nga/src/shell/nga-utils.sh)
 until_key() {
-    local eventCode
+    local eventCode idle=0
     while :; do
-        eventCode=$(getevent -qlc 1 | awk '{if ($2=="EV_KEY" && $4=="DOWN") {print $3; exit}}')
+        eventCode=$(getevent -qlc 1 2>/dev/null | awk '{if ($2=="EV_KEY" && $4=="DOWN") {print $3; exit}}')
         case "$eventCode" in
         KEY_VOLUMEUP)
             printf up
@@ -44,6 +48,10 @@ until_key() {
             return
             ;;
         esac
+        # getevent 不可用或始终读不到事件时避免无限空转：约 90 秒后按默认选项继续
+        idle=$((idle + 1))
+        [ "$idle" -ge 300 ] && { printf up; return; }
+        sleep 0.3
     done
 }
 

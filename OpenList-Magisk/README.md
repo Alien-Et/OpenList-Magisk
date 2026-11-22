@@ -139,4 +139,5 @@ sh /data/adb/modules/openlist/control.sh config-get
 - [03. WebUI 界面](../docs/03.WebUI界面.md)
 - [04. 更新与回滚](../docs/04.更新与回滚.md)
 - [05. 迁移与路径](../docs/05.迁移与路径.md)
-- [06. 总结](../docs/06.总结.md)
+- [06. 安装选项矩阵](../docs/06.安装选项矩阵.md)
+- [07. 总结](../docs/07.总结.md)

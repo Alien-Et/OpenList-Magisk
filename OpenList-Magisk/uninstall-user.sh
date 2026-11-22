@@ -45,6 +45,7 @@ clean_binaries() {
     local found=0
     local dyn
     dyn="$(get_service_var OPENLIST_BINARY)"
+    case "$dyn" in '$MODDIR'*) dyn="$MODROOT${dyn#\$MODDIR}" ;; esac
     local paths="$dyn /data/adb/openlist/bin/openlist $MODROOT/bin/openlist $MODROOT/system/bin/openlist"
     
     for path in $paths; do
@@ -76,6 +77,7 @@ clean_data() {
             log "开始清理数据目录..."
             local dyn
             dyn="$(get_service_var DATA_DIR)"
+            case "$dyn" in '$MODDIR'*) dyn="$MODROOT${dyn#\$MODDIR}" ;; esac
             for dir in "$dyn" "/data/adb/openlist" "/sdcard/Android/openlist"; do
                 if [ -d "$dir" ]; then
                     log "正在删除数据目录：$dir"
