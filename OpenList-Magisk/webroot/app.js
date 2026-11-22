@@ -588,6 +588,28 @@
     });
   }
 
+  /* ---------- 路径修复 ---------- */
+  function fixPaths() {
+    var b = $('fixPathsBtn');
+    b.disabled = true;
+    b.textContent = '检查中…';
+    ctl('fix-paths', 60000).then(function (r) {
+      if (r.kv.result !== 'ok') {
+        toast(r.kv.error || '修复失败', true);
+        return;
+      }
+      if (r.kv.fixed === '1') {
+        toast('已修复：' + [r.kv.fixed_action_bin ? 'action.sh' : '', r.kv.fixed_config ? 'config.json' : ''].filter(Boolean).join('、'));
+      } else {
+        toast('路径一致，无需修复');
+      }
+      return refresh();
+    }).finally(function () {
+      b.disabled = !hasKsu;
+      b.textContent = '检查并修复';
+    });
+  }
+
   /* ---------- 日志 ---------- */
   function loadLog() {
     return sh("sh '" + CONTROL + "' logs 200", 20000).then(function (r) {
@@ -610,7 +632,7 @@
     initSelects();
     initPresets();
     $('modeChip').textContent = hasKsu ? 'KernelSU / APatch' : '无 root 接口';
-    ['toggleBtn', 'restartBtn', 'checkBtn', 'updateBtn', 'saveCfgBtn', 'pwdBtn', 'migrateDataBtn', 'migrateBinBtn']
+    ['toggleBtn', 'restartBtn', 'checkBtn', 'updateBtn', 'saveCfgBtn', 'pwdBtn', 'migrateDataBtn', 'migrateBinBtn', 'fixPathsBtn']
       .forEach(function (id) { $(id).disabled = true; });
 
     if (!hasKsu) {
@@ -630,6 +652,7 @@
     $('pwdBtn').disabled = false;
     $('migrateDataBtn').disabled = false;
     $('migrateBinBtn').disabled = false;
+    $('fixPathsBtn').disabled = false;
 
     $('toggleBtn').onclick = toggleService;
     $('restartBtn').onclick = restart;
@@ -640,6 +663,7 @@
     $('pwdBtn').onclick = changePassword;
     $('migrateDataBtn').onclick = migrateData;
     $('migrateBinBtn').onclick = migrateBin;
+    $('fixPathsBtn').onclick = fixPaths;
     $('logRefresh').onclick = loadLog;
     $('logClear').onclick = clearLog;
     $('storageRefresh').onclick = loadStorages;

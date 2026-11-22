@@ -622,6 +622,46 @@ cmd_migrate_bin() {
     kv result ok
 }
 
+# ---------- 路径自检/修复 ----------
+cmd_fix_paths() {
+    local fixed=0 svc_bin act_bin cur_db old_dir
+    [ -f "$SERVICE_SH" ] || fail "service.sh 不存在"
+
+    # service.sh 与 action.sh 的二进制路径对齐
+    svc_bin="$(get_var OPENLIST_BINARY)"
+    if [ -f "$ACTION_SH" ]; then
+        act_bin="$(sed -n 's/^OPENLIST_BINARY="\(.*\)"/\1/p' "$ACTION_SH" 2>/dev/null | head -n 1)"
+        if [ "$act_bin" != "$svc_bin" ]; then
+            sed -i "s|^OPENLIST_BINARY=.*|OPENLIST_BINARY=\"$svc_bin\"|" "$ACTION_SH" 2>/dev/null || true
+            kv fixed_action_bin "$svc_bin"
+            fixed=1
+        fi
+    fi
+
+    # config.json 的绝对路径对齐到当前 DATA_DIR
+    if [ -f "$DATA_DIR/config.json" ]; then
+        cur_db="$(sed -n 's/.*"db_file"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DATA_DIR/config.json" 2>/dev/null | head -n 1)"
+        if [ -n "$cur_db" ]; then
+            old_dir="$(dirname "$cur_db")"
+            case "$cur_db" in
+                "$DATA_DIR"/*) ;;
+                *)
+                    if [ -n "$old_dir" ] && [ "$old_dir" != "$DATA_DIR" ]; then
+                        sed -i "s|\"$(sed_pattern_escape "$old_dir")|\"$(sed_escape "$DATA_DIR")|g" "$DATA_DIR/config.json" 2>/dev/null || true
+                        kv fixed_config "$old_dir -> $DATA_DIR"
+                        fixed=1
+                    fi
+                    ;;
+            esac
+        fi
+    fi
+
+    kv data_dir "$DATA_DIR"
+    kv bin "$OPENLIST_BINARY"
+    kv fixed "$fixed"
+    kv result ok
+}
+
 # ---------- 入口 ----------
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
@@ -640,12 +680,13 @@ case "$cmd" in
     api) cmd_api "$@" ;;
     migrate-data) cmd_migrate_data "$@" ;;
     migrate-bin) cmd_migrate_bin "$@" ;;
+    fix-paths) cmd_fix_paths ;;
     version)
         kv version "$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
         kv result ok
         ;;
     *)
-        echo "usage: control.sh {status|start|stop|restart|check|update|logs|config-get|config-save|passwd|token|api|migrate-data|migrate-bin|version}"
+        echo "usage: control.sh {status|start|stop|restart|check|update|logs|config-get|config-save|passwd|token|api|migrate-data|migrate-bin|fix-paths|version}"
         exit 2
         ;;
 esac
