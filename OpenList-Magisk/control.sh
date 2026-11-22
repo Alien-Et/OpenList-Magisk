@@ -321,6 +321,103 @@ cmd_versions() {
     kv result ok
 }
 
+# ---------- 路径体检 ----------
+# 列出 3 个二进制位置与 2 个数据目录的实际占用，标出当前使用的那份
+cmd_scan() {
+    local p sz cur n mt
+    for p in /data/adb/openlist/bin/openlist "$MODDIR/bin/openlist" "$MODDIR/system/bin/openlist"; do
+        [ -f "$p" ] || continue
+        sz="$(stat -c %s "$p" 2>/dev/null || echo 0)"
+        cur=0
+        [ "$p" = "$OPENLIST_BINARY" ] && cur=1
+        echo "item=bin|$p|$sz|$cur"
+    done
+    for p in /data/adb/openlist /sdcard/Android/openlist; do
+        [ -d "$p" ] || continue
+        n="$(find "$p" -type f 2>/dev/null | wc -l | tr -d ' ')"
+        mt="$(stat -c %y "$p/data.db" 2>/dev/null | cut -c1-16)"
+        [ -n "$mt" ] || mt="-"
+        cur=0
+        [ "$p" = "$DATA_DIR" ] && cur=1
+        echo "item=data|$p|$n|$mt|$cur"
+    done
+    kv current_bin "$OPENLIST_BINARY"
+    kv current_data "$DATA_DIR"
+    kv result ok
+}
+
+# 删除非当前使用的二进制副本
+cmd_clean_bins() {
+    local p removed=0
+    for p in /data/adb/openlist/bin/openlist "$MODDIR/bin/openlist" "$MODDIR/system/bin/openlist"; do
+        [ -f "$p" ] || continue
+        [ "$p" = "$OPENLIST_BINARY" ] && continue
+        rm -f "$p" 2>/dev/null && {
+            echo "removed=$p"
+            removed=$((removed + 1))
+        }
+    done
+    kv count "$removed"
+    kv result ok
+}
+
+# 删除指定的数据目录（不能是当前使用的；目录里有二进制时保留 bin）
+cmd_delete_data() {
+    local b64="${1:-}" dir f
+    [ -n "$b64" ] || fail "缺少目录"
+    dir="$(echo "$b64" | base64 -d 2>/dev/null)"
+    [ -n "$dir" ] || fail "目录解析失败"
+    case "$dir" in /data/*|/sdcard/*|/storage/*) ;; *) fail "路径不合法" ;; esac
+    [ "$dir" = "$DATA_DIR" ] && fail "不能删除当前正在使用的数据目录"
+    [ -d "$dir" ] || fail "目录不存在"
+
+    case "$OPENLIST_BINARY" in
+        "$dir"/bin/*)
+            for f in "$dir"/* "$dir"/.[!.]*; do
+                [ -e "$f" ] || continue
+                [ "$f" = "$dir/bin" ] && continue
+                rm -rf "$f" 2>/dev/null
+            done
+            kv kept_bin 1
+            ;;
+        *)
+            rm -rf "$dir" 2>/dev/null || fail "删除失败（权限不足？）"
+            ;;
+    esac
+    kv deleted "$dir"
+    kv result ok
+}
+
+# 切换数据目录（不搬文件，只改 service.sh 与 config.json 里的绝对路径）
+cmd_use_data() {
+    local b64="${1:-}" dir old old_esc new_esc was_running=0
+    [ -n "$b64" ] || fail "缺少目录"
+    dir="$(echo "$b64" | base64 -d 2>/dev/null)"
+    [ -n "$dir" ] || fail "目录解析失败"
+    case "$dir" in /data/*|/sdcard/*|/storage/*) ;; *) fail "路径不合法" ;; esac
+    [ "$dir" = "$DATA_DIR" ] && fail "已经是当前数据目录"
+    [ -d "$dir" ] || fail "目录不存在"
+    [ -f "$dir/data.db" ] || fail "该目录里没有 data.db，不是有效的数据目录"
+
+    old="$DATA_DIR"
+    [ -n "$(openlist_pid)" ] && was_running=1
+    [ "$was_running" = "1" ] && cmd_stop >/dev/null 2>&1
+
+    sed -i "s|^DATA_DIR=.*|DATA_DIR=\"$dir\"|" "$SERVICE_SH" || fail "更新 service.sh 失败"
+    if [ -f "$dir/config.json" ] && [ "$old" != "$dir" ]; then
+        old_esc="$(sed_pattern_escape "$old")"
+        new_esc="$(sed_escape "$dir")"
+        sed -i "s|\"$old_esc|\"$new_esc|g" "$dir/config.json" 2>/dev/null || true
+        kv config_updated 1
+    fi
+    DATA_DIR="$dir"
+
+    [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
+    kv old_data_dir "$old"
+    kv data_dir "$dir"
+    kv result ok
+}
+
 cmd_update() {
     local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code want_tag="" api
     while [ $# -gt 0 ]; do
@@ -793,6 +890,10 @@ case "$cmd" in
     restart) cmd_restart ;;
     check) cmd_check ;;
     versions) cmd_versions ;;
+    scan) cmd_scan ;;
+    clean-bins) cmd_clean_bins ;;
+    delete-data) cmd_delete_data "$@" ;;
+    use-data) cmd_use_data "$@" ;;
     update) cmd_update "$@" ;;
     logs) cmd_logs "$@" ;;
     config-get) cmd_config_get ;;
@@ -808,7 +909,7 @@ case "$cmd" in
         kv result ok
         ;;
     *)
-        echo "usage: control.sh {status|start|stop|restart|check|versions|update|logs|config-get|config-save|passwd|token|api|migrate-data|migrate-bin|fix-paths|version}"
+        echo "usage: control.sh {status|start|stop|restart|check|versions|update|logs|config-get|config-save|passwd|token|api|migrate-data|migrate-bin|fix-paths|scan|clean-bins|delete-data|use-data|version}"
         exit 2
         ;;
 esac

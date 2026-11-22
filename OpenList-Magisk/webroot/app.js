@@ -104,6 +104,14 @@
         '[2026-11-23 06:20:03] 成功获取 Openlist 端口: 5244',
         '[2026-11-23 06:20:04] 成功获取 IP: ip_address=192.168.1.100'
       ];
+    } else if (a.indexOf('scan') === 0) {
+      out = [
+        'item=bin|/data/adb/openlist/bin/openlist|172961944|1',
+        'item=bin|/data/adb/modules/openlist/bin/openlist|172961944|0',
+        'item=data|/data/adb/openlist|12|2026-11-23 07:20|1',
+        'item=data|/sdcard/Android/openlist|15|2026-11-20 18:41|0'
+      ];
+      kv = { current_bin: '/data/adb/openlist/bin/openlist', current_data: '/data/adb/openlist', result: 'ok' };
     } else if (a.indexOf('check') === 0) {
       kv = { current: 'v4.2.10', latest: 'v4.2.10', asset: 'openlist-android-arm64.tar.gz',
              abi: 'arm64-v8a', up_to_date: '1', result: 'ok' };
@@ -468,6 +476,204 @@
       toast('更新失败: ' + e, true);
       b.disabled = false;
       b.textContent = '立即更新';
+    });
+  }
+
+  /* ---------- 路径体检 ---------- */
+  function fmtSize(n) {
+    n = Number(n) || 0;
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(0) + ' KB';
+    return n + ' B';
+  }
+
+  function loadScan() {
+    return ctl('scan', 60000).then(function (r) {
+      var bins = [], datas = [];
+      (r.raw.stdout || '').split('\n').forEach(function (l) {
+        if (l.indexOf('item=') !== 0) return;
+        var p = l.slice(5).split('|');
+        if (p[0] === 'bin') bins.push({ path: p[1], size: p[2], cur: p[3] === '1' });
+        else if (p[0] === 'data') datas.push({ path: p[1], files: p[2], mt: p[3], cur: p[4] === '1' });
+      });
+      renderScanBins(bins);
+      renderScanData(datas);
+    }).catch(function (e) {
+      $('scanBins').textContent = '扫描失败：' + e;
+      $('scanData').textContent = '';
+    });
+  }
+
+  function renderScanBins(list) {
+    var box = $('scanBins');
+    box.textContent = '';
+    if (!list.length) {
+      box.textContent = '没有找到二进制文件';
+      return;
+    }
+    list.forEach(function (b) {
+      var row = document.createElement('div');
+      row.className = 'scanrow';
+      var p = document.createElement('span');
+      p.className = 'path';
+      p.textContent = b.path;
+      p.onclick = function () { copyText(b.path); };
+      var meta = document.createElement('span');
+      meta.className = 'scanmeta';
+      meta.textContent = fmtSize(b.size);
+      row.appendChild(p);
+      row.appendChild(meta);
+      var tag = document.createElement('span');
+      tag.className = b.cur ? 'chip' : 'chip gray';
+      tag.textContent = b.cur ? '当前' : '多余';
+      row.appendChild(tag);
+      box.appendChild(row);
+    });
+  }
+
+  function renderScanData(list) {
+    var box = $('scanData');
+    box.textContent = '';
+    if (!list.length) {
+      box.textContent = '没有找到数据目录';
+      return;
+    }
+    list.forEach(function (d) {
+      var wrap = document.createElement('div');
+      wrap.className = 'scanrow wrap';
+
+      var top = document.createElement('div');
+      top.className = 'scanrow';
+      var p = document.createElement('span');
+      p.className = 'path';
+      p.textContent = d.path;
+      p.onclick = function () { copyText(d.path); };
+      var meta = document.createElement('span');
+      meta.className = 'scanmeta';
+      meta.textContent = d.files + ' 个文件 · db ' + (d.mt || '-');
+      top.appendChild(p);
+      top.appendChild(meta);
+      wrap.appendChild(top);
+
+      var acts = document.createElement('div');
+      acts.className = 'scanacts';
+      if (d.cur) {
+        var t = document.createElement('span');
+        t.className = 'chip';
+        t.textContent = '当前使用';
+        acts.appendChild(t);
+      } else {
+        var b1 = document.createElement('button');
+        b1.className = 'mini ghost';
+        b1.textContent = '切换到此';
+        b1.onclick = function () { useData(d.path, b1); };
+        var b2 = document.createElement('button');
+        b2.className = 'mini danger';
+        b2.textContent = '删除';
+        b2.onclick = function () { askDeleteData(d.path, wrap); };
+        acts.appendChild(b1);
+        acts.appendChild(b2);
+      }
+      wrap.appendChild(acts);
+      box.appendChild(wrap);
+    });
+  }
+
+  function useData(path, btn) {
+    if (btn.dataset.confirm !== '1') {
+      btn.dataset.confirm = '1';
+      btn.textContent = '确认切换？';
+      setTimeout(function () {
+        if (btn.dataset.confirm === '1') {
+          btn.dataset.confirm = '0';
+          btn.textContent = '切换到此';
+        }
+      }, 4000);
+      return;
+    }
+    btn.dataset.confirm = '0';
+    btn.disabled = true;
+    btn.textContent = '切换中…';
+    ctl("use-data '" + b64utf8(path) + "'", 120000).then(function (r) {
+      if (r.kv.result === 'ok') toast('已切换到 ' + path);
+      else toast(r.kv.error || '切换失败', true);
+      return refresh();
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = '切换到此';
+      loadScan();
+    });
+  }
+
+  function askDeleteData(path, wrap) {
+    if (wrap.querySelector('.scanconfirm')) return;
+    var box = document.createElement('div');
+    box.className = 'scanconfirm';
+
+    var tip = document.createElement('div');
+    tip.className = 'hint';
+    tip.textContent = '删除不可恢复。请输入下面的目录名确认：' + path;
+
+    var inp = document.createElement('input');
+    inp.placeholder = path;
+    inp.style.marginTop = '8px';
+
+    var ok = document.createElement('button');
+    ok.className = 'mini danger';
+    ok.textContent = '确认删除';
+    ok.onclick = function () {
+      if (inp.value.trim() !== path) return toast('路径不一致，已取消', true);
+      ok.disabled = true;
+      ok.textContent = '删除中…';
+      ctl("delete-data '" + b64utf8(path) + "'", 120000).then(function (r) {
+        if (r.kv.result === 'ok') toast('已删除 ' + path);
+        else toast(r.kv.error || '删除失败', true);
+        return refresh();
+      }).finally(function () {
+        box.remove();
+        loadScan();
+      });
+    };
+
+    var cancel = document.createElement('button');
+    cancel.className = 'mini ghost';
+    cancel.textContent = '取消';
+    cancel.onclick = function () { box.remove(); };
+
+    var btns = document.createElement('div');
+    btns.className = 'scanacts';
+    btns.appendChild(ok);
+    btns.appendChild(cancel);
+
+    box.appendChild(tip);
+    box.appendChild(inp);
+    box.appendChild(btns);
+    wrap.appendChild(box);
+  }
+
+  function cleanBins() {
+    var b = $('cleanBinsBtn');
+    if (b.dataset.confirm !== '1') {
+      b.dataset.confirm = '1';
+      b.textContent = '确认清理？';
+      setTimeout(function () {
+        if (b.dataset.confirm === '1') {
+          b.dataset.confirm = '0';
+          b.textContent = '清理其余副本';
+        }
+      }, 4000);
+      return;
+    }
+    b.dataset.confirm = '0';
+    b.disabled = true;
+    b.textContent = '清理中…';
+    ctl('clean-bins', 60000).then(function (r) {
+      if (r.kv.result === 'ok') toast('已清理 ' + (r.kv.count || 0) + ' 份多余二进制');
+      else toast(r.kv.error || '清理失败', true);
+    }).finally(function () {
+      b.disabled = false;
+      b.textContent = '清理其余副本';
+      loadScan();
     });
   }
 
@@ -868,6 +1074,7 @@
     $('restartBtn').onclick = restart;
     $('refreshBtn').onclick = function () { refresh(); loadLog(); };
     $('checkBtn').onclick = checkUpdate;
+    $('cleanBinsBtn').onclick = cleanBins;
     $('updateBtn').onclick = doUpdate;
     $('saveCfgBtn').onclick = saveConfig;
     $('pwdBtn').onclick = changePassword;
@@ -889,6 +1096,7 @@
 
     refresh()
       .then(function () { return checkUpdate(true); })
+      .then(loadScan)
       .then(loadVersions)
       .then(loadConfig)
       .then(loadLog)
