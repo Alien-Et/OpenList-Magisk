@@ -1,0 +1,9 @@
+# 打包产物
+openlist-magisk-*.zip
+
+# CI / 本地打包时下载的二进制（由 workflow 每次重新下载，不入库）
+OpenList-Magisk/openlist-arm
+OpenList-Magisk/openlist-arm64
+
+# 本地打包临时目录
+.build/
