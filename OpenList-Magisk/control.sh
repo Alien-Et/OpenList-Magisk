@@ -74,6 +74,7 @@ json_escape() {
 }
 
 sed_escape() { printf '%s' "$1" | sed -e 's/[&\\|]/\\&/g'; }
+sed_pattern_escape() { printf '%s' "$1" | sed -e 's/[.[\*^$]/\\&/g'; }
 
 get_token() {
     local t="" now ts
@@ -512,7 +513,7 @@ cmd_passwd() { # b64pass [b64user]
 
 # ---------- 迁移 ----------
 cmd_migrate_data() {
-    local b64="${1:-}" new old was_running=0 a b
+    local b64="${1:-}" new old was_running=0 a b old_esc new_esc
     [ -n "$b64" ] || fail "缺少目标目录"
     new="$(echo "$b64" | base64 -d 2>/dev/null)"
     old="$DATA_DIR"
@@ -558,6 +559,15 @@ cmd_migrate_data() {
     fi
 
     sed -i "s|^DATA_DIR=.*|DATA_DIR=\"$new\"|" "$SERVICE_SH" || fail "更新 service.sh 失败"
+
+    # config.json 里的 temp_dir / database.db_file / bleve_dir / log.name 都是绝对路径
+    if [ -f "$new/config.json" ]; then
+        old_esc="$(sed_pattern_escape "$old")"
+        new_esc="$(sed_escape "$new")"
+        sed -i "s|\"$old_esc|\"$new_esc|g" "$new/config.json" 2>/dev/null || true
+        kv config_updated 1
+    fi
+
     DATA_DIR="$new"
     rm -f "$PROGRESS_FILE"
 

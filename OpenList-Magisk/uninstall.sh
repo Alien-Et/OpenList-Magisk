@@ -16,6 +16,11 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
+# 从 service.sh 读取安装/迁移后的实际路径
+get_service_var() {
+    sed -n "s/^$1=\"\\(.*\\)\"/\\1/p" "$MODROOT/service.sh" 2>/dev/null | head -n 1
+}
+
 # 停止服务函数
 stop_service() {
     if pgrep -f openlist >/dev/null; then
@@ -38,7 +43,9 @@ stop_service() {
 # 清理二进制文件
 clean_binaries() {
     local found=0
-    local paths="/data/adb/openlist/bin/openlist $MODROOT/bin/openlist $MODROOT/system/bin/openlist"
+    local dyn
+    dyn="$(get_service_var OPENLIST_BINARY)"
+    local paths="$dyn /data/adb/openlist/bin/openlist $MODROOT/bin/openlist $MODROOT/system/bin/openlist"
     
     for path in $paths; do
         if [ -f "$path" ]; then
@@ -59,7 +66,9 @@ clean_data() {
     local found=0
     
     # 清理所有可能的数据目录
-    for dir in "/data/adb/openlist" "/sdcard/Android/openlist"; do
+    local dyn
+    dyn="$(get_service_var DATA_DIR)"
+    for dir in "$dyn" "/data/adb/openlist" "/sdcard/Android/openlist"; do
         if [ -d "$dir" ]; then
             log "正在删除数据目录：$dir"
             rm -rf "$dir"
