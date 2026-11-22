@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpenList 控制台</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div class="top">
+  <h1>OpenList</h1>
+  <span class="chip" id="verChip">-</span>
+  <span class="chip gray" id="modeChip">检测中</span>
+</div>
+
+<!-- 状态 -->
+<div class="card">
+  <div class="row">
+    <div class="row left" style="gap:8px">
+      <span class="dot" id="stateDot"></span>
+      <span id="stateText" style="font-weight:600">检测中…</span>
+    </div>
+    <span class="muted" id="pidText">PID -</span>
+  </div>
+  <div class="addr" id="addrText">--</div>
+  <div class="meta">
+    <span id="dataDirText">数据目录 -</span>
+  </div>
+  <div class="btns">
+    <button id="toggleBtn" disabled>启动</button>
+    <button class="ghost" id="restartBtn">重启</button>
+  </div>
+  <div class="btns">
+    <button class="ghost" id="openBtn">打开网页</button>
+    <button class="ghost" id="refreshBtn">刷新状态</button>
+  </div>
+</div>
+
+<!-- 更新 -->
+<h2>版本与更新</h2>
+<div class="card">
+  <div class="kv"><span>当前版本</span><span id="curVer">-</span></div>
+  <div class="kv"><span>最新版本</span><span id="latestVer">-</span></div>
+  <div class="kv"><span>设备架构</span><span id="abiText">-</span></div>
+  <div class="kv"><span>下载资产</span><span id="assetText">-</span></div>
+  <div class="btns">
+    <button class="ghost" id="checkBtn">检查更新</button>
+    <button id="updateBtn" disabled>立即更新</button>
+  </div>
+  <div class="progress" id="updateProgress"><i></i></div>
+  <div class="hint" id="updateHint">更新会先停止服务，替换二进制后再启动，失败可用 .bak 回滚。</div>
+  <div class="warnbox" id="updateWarn" style="display:none"></div>
+</div>
+
+<!-- 下载配置 -->
+<h2>下载配置</h2>
+<div class="card">
+  <label>监听端口</label>
+  <input id="cfgPort" inputmode="numeric" placeholder="5244">
+  <label>管理 Token</label>
+  <input id="cfgToken" type="password" placeholder="openlist-…" autocomplete="off">
+  <div class="hint">留空时由模块启动脚本自动从 data.db 提取</div>
+  <label>默认目标路径</label>
+  <input id="cfgPath" placeholder="/115/影视/">
+  <label>离线引擎</label>
+  <select id="cfgTool">
+    <option>115 Open</option>
+    <option>115 Cloud</option>
+    <option>PikPak</option>
+    <option>qBittorrent</option>
+    <option>Transmission</option>
+  </select>
+  <label>删除策略</label>
+  <select id="cfgPolicy">
+    <option value="delete_on_upload_succeed">上传成功后删除</option>
+    <option value="delete_never">从不删除</option>
+    <option value="delete_always">总是删除</option>
+  </select>
+  <label>预设路径（逗号分隔）</label>
+  <input id="cfgPresets" placeholder="/115/影视/,/115/">
+  <div class="btns">
+    <button id="saveCfgBtn">保存配置</button>
+  </div>
+</div>
+
+<!-- 改密 -->
+<h2>管理员密码</h2>
+<div class="card">
+  <label>新密码</label>
+  <input id="newPwd" type="password" autocomplete="new-password" placeholder="至少 8 位">
+  <label>确认新密码</label>
+  <input id="newPwd2" type="password" autocomplete="new-password" placeholder="再输一次">
+  <div class="hint">改密时会先停止服务，完成后自动启动。</div>
+  <div class="btns">
+    <button class="warn" id="pwdBtn">修改密码</button>
+  </div>
+</div>
+
+<!-- 迁移 -->
+<h2>迁移</h2>
+<div class="card">
+  <details>
+    <summary>数据目录迁移</summary>
+    <label>新数据目录</label>
+    <input id="newDataDir" placeholder="/data/adb/openlist-new">
+    <div class="hint">支持 /data、/sdcard、/storage。目标必须为空目录或不存在。</div>
+    <div class="warnbox">会停止服务 → 复制 → 校验文件数与 data.db → 修改 service.sh → 启动。跨分区（/data → /sdcard）会丢失属主权限，SQLite 性能也会下降。</div>
+    <div class="btns"><button class="warn" id="migrateDataBtn">开始迁移</button></div>
+  </details>
+  <details>
+    <summary>二进制路径迁移</summary>
+    <label>新二进制路径</label>
+    <input id="newBinPath" placeholder="/data/adb/openlist/bin/openlist">
+    <div class="hint">仅支持 /data 或 /system/bin。目标文件不能已存在。</div>
+    <div class="btns"><button class="warn" id="migrateBinBtn">开始迁移</button></div>
+  </details>
+</div>
+
+<!-- 日志 -->
+<h2>服务日志</h2>
+<div class="card">
+  <pre id="logBox">加载中…</pre>
+  <div class="btns">
+    <button class="ghost" id="logRefresh">刷新</button>
+    <button class="danger" id="logClear">清空</button>
+  </div>
+</div>
+
+<!-- 关于 -->
+<h2>关于</h2>
+<div class="card">
+  <div class="kv"><span>模块目录</span><span id="modDirText">-</span></div>
+  <div class="kv"><span>二进制</span><span id="binText">-</span></div>
+  <div class="row" style="margin-top:10px">
+    <a class="link" href="https://github.com/Alien-Et/OpenList-Magisk" target="_blank" rel="noreferrer">项目地址</a>
+    <a class="link" href="https://github.com/Alien-Et/OpenList-Magisk/releases/latest" target="_blank" rel="noreferrer">Release</a>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="./app.js"></script>
+</body>
+</html>

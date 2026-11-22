@@ -16,6 +16,8 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
   - /storage/emulated/0/Android/openlist/
 - **密码定制**：提供初始密码设置选项
 - **动态服务管理**：通过 Magisk/KernelSU/APatch 的"动作"按钮一键控制服务
+- **WebUI 控制台**（KernelSU / APatch）：查看状态、启停、在线更新二进制、改下载配置、改管理员密码、迁移数据/二进制目录
+- **命令行控制**：`control.sh` 三家通用，WebUI 和 action.sh 都调用它
 - **智能网络适配**：自动识别 WiFi 和移动网络 IP
 - **日志支持**：详细的运行日志记录
 
@@ -50,6 +52,33 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 - 服务状态显示在 module.prop：
   - 运行中：显示访问地址和数据目录
   - 已停止：显示启动提示
+
+### WebUI 控制台（KernelSU / APatch）
+
+在 KernelSU 或 APatch 管理器里打开模块，点击 WebUI 入口即可：
+
+- 状态：运行中/已停止、访问地址、PID、数据目录、架构
+- 启停/重启服务
+- 版本与更新：拉取 OpenList 官方 Release，按 CPU 架构选择 `android-arm64 / android-arm / android-amd64 / android-386`，下载后自动停止服务、替换二进制、重新启动（失败可用 `.bak` 回滚）
+- 下载配置：修改 `offline.conf` 的端口、Token、目标路径、离线引擎、删除策略
+- 修改管理员密码
+- 迁移数据目录 / 二进制路径
+- 查看和清空 `service.log`
+
+> Magisk 没有 `webroot` WebUI 机制，看不到这个入口，请用"动作"按钮或下面的命令行。
+
+### 命令行控制（Magisk / KernelSU / APatch 通用）
+
+```sh
+sh /data/adb/modules/openlist/control.sh status
+sh /data/adb/modules/openlist/control.sh start|stop|restart
+sh /data/adb/modules/openlist/control.sh check
+sh /data/adb/modules/openlist/control.sh update [--force] [--proxy URL]
+sh /data/adb/modules/openlist/control.sh logs 200
+sh /data/adb/modules/openlist/control.sh config-get
+```
+
+`update` 会依次尝试直连和内置 GitHub 代理，可用 `GH_PROXY` 环境变量或 `--proxy` 指定。
 
 ### 访问方式
 - Web 界面访问：`http://<设备IP>:5244`

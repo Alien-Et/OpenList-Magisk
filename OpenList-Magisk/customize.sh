@@ -215,6 +215,11 @@ else
     abort "❌ 错误：未找到 service.sh"
 fi
 
+# 确保控制脚本可执行
+if [ -f "$MODROOT/control.sh" ]; then
+    chmod 755 "$MODROOT/control.sh" 2>/dev/null || true
+fi
+
 # 完成安装
 ui_print " "
 ui_print "✨ 安装完成"
