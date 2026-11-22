@@ -257,7 +257,7 @@ cmd_check() {
 }
 
 cmd_update() {
-    local force=0 asset="" tag cur url md5url work tgz md5file want got
+    local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code
     while [ $# -gt 0 ]; do
         case "$1" in
             --force) force=1 ;;
@@ -324,14 +324,33 @@ cmd_update() {
     rm -rf "$work"
     rm -f "$PROGRESS_FILE"
 
-    kv previous "$cur"
-    kv current "$tag"
-    kv asset "$asset"
     if [ -n "$(openlist_pid)" ]; then
+        # 启动成功后再同步 module.prop，避免失败时版本号被改花
+        case "$tag" in
+            v[0-9]*.[0-9]*.[0-9]*)
+                new_ver="$tag"
+                new_code="$(echo "${tag#v}" | awk -F. '{printf "%d", $1 * 1000 + $2 * 100 + $3}')"
+                sed -i "s/^version=.*/version=$new_ver/" "$MODULE_PROP" 2>/dev/null || true
+                sed -i "s/^versionCode=.*/versionCode=$new_code/" "$MODULE_PROP" 2>/dev/null || true
+                ;;
+        esac
+        kv previous "$cur"
+        kv current "$tag"
+        kv asset "$asset"
         kv result ok
     else
+        # 启动失败：自动回滚二进制，版本号保持原样
+        if [ -f "$OPENLIST_BINARY.bak" ]; then
+            cp -f "$OPENLIST_BINARY.bak" "$OPENLIST_BINARY" 2>/dev/null
+            chmod 755 "$OPENLIST_BINARY" 2>/dev/null
+            cmd_start >/dev/null 2>&1
+            kv rolled_back 1
+        fi
+        kv previous "$cur"
+        kv current "$cur"
+        kv asset "$asset"
         kv result fail
-        kv error "新版本已替换但启动失败，可用 $OPENLIST_BINARY.bak 回滚"
+        kv error "新版本启动失败，已回滚到 $cur"
     fi
 }
 
@@ -539,9 +558,14 @@ cmd_migrate_bin() {
     local b64="${1:-}" new was_running=0
     [ -n "$b64" ] || fail "缺少目标路径"
     new="$(echo "$b64" | base64 -d 2>/dev/null)"
+    # 运行时 /system/bin 在 Magisk/KernelSU 下是 overlay，写进去重启即丢；
+    # 统一映射到模块的 system/bin（真实文件，重启后由模块挂载到 /system/bin）
     case "$new" in
-        /data/*|/system/bin/*) ;;
-        *) fail "目标路径不合法（仅支持 /data 或 /system/bin）" ;;
+        /system/bin/*) new="$MODDIR/system/bin/${new#/system/bin/}" ;;
+    esac
+    case "$new" in
+        /data/*|"$MODDIR"/system/bin/*) ;;
+        *) fail "目标路径不合法（仅支持 /data 或模块 system/bin）" ;;
     esac
     [ "$new" = "$OPENLIST_BINARY" ] && fail "目标与当前路径相同"
     [ -f "$new" ] && fail "目标文件已存在"
@@ -556,7 +580,7 @@ cmd_migrate_bin() {
     }
     chmod 755 "$new" 2>/dev/null || true
     case "$new" in
-        /system/bin/*) chcon u:object_r:system_file:s0 "$new" 2>/dev/null || true ;;
+        "$MODDIR"/system/bin/*) chcon u:object_r:system_file:s0 "$new" 2>/dev/null || true ;;
     esac
 
     sed -i "s|^OPENLIST_BINARY=.*|OPENLIST_BINARY=\"$new\"|" "$SERVICE_SH" || fail "更新 service.sh 失败"
@@ -565,6 +589,9 @@ cmd_migrate_bin() {
 
     [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
     kv new_bin "$new"
+    case "$new" in
+        "$MODDIR"/system/bin/*) kv note "已写入模块 system/bin，重启后同样挂载到 /system/bin" ;;
+    esac
     kv result ok
 }
 

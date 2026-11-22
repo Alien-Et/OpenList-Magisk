@@ -2,6 +2,7 @@
 
 :root,
 :root[data-theme="light"]{
+  color-scheme: light;
   --bg:#eef1f7;
   --blob-1:rgba(199,210,254,.85);
   --blob-2:rgba(251,207,232,.70);
@@ -26,6 +27,7 @@
 }
 
 :root[data-theme="dark"]{
+  color-scheme: dark;
   --bg:#070a10;
   --blob-1:rgba(30,58,138,.55);
   --blob-2:rgba(76,29,149,.45);
@@ -158,6 +160,18 @@ input,select,textarea{
   transition:border-color .15s ease;
 }
 input:focus,select:focus,textarea:focus{border-color:var(--primary)}
+/* 下拉框：部分 WebView 的 option 弹层不继承页面配色，单独指定 */
+select{
+  background:var(--card-solid);
+  color:var(--text);
+  -webkit-appearance:menulist;
+  appearance:auto;
+}
+select option,
+select optgroup{
+  background:var(--card-solid);
+  color:var(--text);
+}
 textarea{min-height:96px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
 .hint{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.5}
 
