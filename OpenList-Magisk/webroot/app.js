@@ -149,9 +149,54 @@
     $('cfgPort').value = kv.PORT || '5244';
     $('cfgToken').value = kv.TOKEN || '';
     $('cfgPath').value = kv.PATH || '/115/影视/';
-    if (kv.TOOL) $('cfgTool').value = kv.TOOL;
-    if (kv.DELETE_POLICY) $('cfgPolicy').value = kv.DELETE_POLICY;
+    setSelect('toolSelect', kv.TOOL || '115 Open');
+    setSelect('policySelect', kv.DELETE_POLICY || 'delete_on_upload_succeed');
     $('cfgPresets').value = kv.PRESET_PATHS || '/115/影视/,/115/';
+  }
+
+  /* 自定义下拉 */
+  function setSelect(id, value) {
+    var sel = $(id);
+    if (!sel) return;
+    var btn = sel.querySelector('.select-btn');
+    var menu = sel.querySelector('.select-menu');
+    var found = null;
+    menu.querySelectorAll('button').forEach(function (b) {
+      var hit = b.dataset.value === value;
+      b.classList.toggle('active', hit);
+      if (hit) found = b;
+    });
+    if (found) {
+      sel.dataset.value = value;
+      btn.textContent = found.textContent;
+    }
+  }
+
+  function initSelects() {
+    document.querySelectorAll('.select').forEach(function (sel) {
+      var btn = sel.querySelector('.select-btn');
+      var menu = sel.querySelector('.select-menu');
+      btn.onclick = function (e) {
+        e.stopPropagation();
+        document.querySelectorAll('.select-menu').forEach(function (m) {
+          if (m !== menu) m.hidden = true;
+        });
+        menu.hidden = !menu.hidden;
+      };
+      menu.querySelectorAll('button').forEach(function (opt) {
+        opt.onclick = function (e) {
+          e.stopPropagation();
+          sel.dataset.value = opt.dataset.value;
+          btn.textContent = opt.textContent;
+          menu.querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
+          opt.classList.add('active');
+          menu.hidden = true;
+        };
+      });
+    });
+    document.addEventListener('click', function () {
+      document.querySelectorAll('.select-menu').forEach(function (m) { m.hidden = true; });
+    });
   }
 
   /* ---------- 状态 ---------- */
@@ -311,8 +356,8 @@
       'PORT=' + port,
       'TOKEN=' + token,
       'PATH=' + path,
-      'TOOL=' + $('cfgTool').value,
-      'DELETE_POLICY=' + $('cfgPolicy').value,
+      'TOOL=' + $('toolSelect').dataset.value,
+      'DELETE_POLICY=' + $('policySelect').dataset.value,
       'PRESET_PATHS=' + presets
     ].join('\n') + '\n';
 
@@ -542,6 +587,7 @@
   function init() {
     $('themeBtn').onclick = cycleTheme;
     applyTheme();
+    initSelects();
     $('modeChip').textContent = hasKsu ? 'KernelSU / APatch' : '无 root 接口';
     ['toggleBtn', 'restartBtn', 'checkBtn', 'updateBtn', 'saveCfgBtn', 'pwdBtn', 'migrateDataBtn', 'migrateBinBtn']
       .forEach(function (id) { $(id).disabled = true; });

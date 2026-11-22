@@ -65,19 +65,25 @@
   <label>默认目标路径</label>
   <input id="cfgPath" placeholder="/115/影视/">
   <label>离线引擎</label>
-  <select id="cfgTool">
-    <option>115 Open</option>
-    <option>115 Cloud</option>
-    <option>PikPak</option>
-    <option>qBittorrent</option>
-    <option>Transmission</option>
-  </select>
+  <div class="select" id="toolSelect" data-value="115 Open">
+    <button type="button" class="select-btn">115 Open</button>
+    <div class="select-menu" hidden>
+      <button type="button" data-value="115 Open">115 Open</button>
+      <button type="button" data-value="115 Cloud">115 Cloud</button>
+      <button type="button" data-value="PikPak">PikPak</button>
+      <button type="button" data-value="qBittorrent">qBittorrent</button>
+      <button type="button" data-value="Transmission">Transmission</button>
+    </div>
+  </div>
   <label>删除策略</label>
-  <select id="cfgPolicy">
-    <option value="delete_on_upload_succeed">上传成功后删除</option>
-    <option value="delete_never">从不删除</option>
-    <option value="delete_always">总是删除</option>
-  </select>
+  <div class="select" id="policySelect" data-value="delete_on_upload_succeed">
+    <button type="button" class="select-btn">上传成功后删除</button>
+    <div class="select-menu" hidden>
+      <button type="button" data-value="delete_on_upload_succeed">上传成功后删除</button>
+      <button type="button" data-value="delete_never">从不删除</button>
+      <button type="button" data-value="delete_always">总是删除</button>
+    </div>
+  </div>
   <label>预设路径（逗号分隔）</label>
   <input id="cfgPresets" placeholder="/115/影视/,/115/">
   <div class="btns">

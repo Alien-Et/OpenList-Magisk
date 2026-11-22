@@ -142,7 +142,7 @@ button{
   box-shadow:0 6px 16px rgba(37,99,235,.22);
 }
 button:active{transform:scale(.97)}
-button:disabled{opacity:.42;cursor:default;transform:none;box-shadow:none}
+button:disabled{opacity:.55;cursor:default;transform:none;box-shadow:none}
 button.ghost{
   background:var(--glass-strong);color:var(--primary);
   border-color:var(--glass-border);box-shadow:var(--inner);
@@ -160,6 +160,7 @@ input,select,textarea{
   transition:border-color .15s ease;
 }
 input:focus,select:focus,textarea:focus{border-color:var(--primary)}
+input::placeholder,textarea::placeholder{color:var(--sub);opacity:.85}
 /* 下拉框：部分 WebView 的 option 弹层不继承页面配色，单独指定 */
 select{
   background:var(--card-solid);
@@ -172,6 +173,34 @@ select optgroup{
   background:var(--card-solid);
   color:var(--text);
 }
+
+/* 自定义下拉：不用原生 select，避免系统弹层白底白字 */
+[hidden]{display:none !important}
+.select{position:relative}
+.select-btn{
+  flex:none;min-width:0;width:100%;
+  background:var(--glass-strong);color:var(--text);
+  border:1px solid var(--glass-border);border-radius:16px;
+  padding:12px 14px;min-height:46px;
+  display:flex;align-items:center;justify-content:space-between;
+  box-shadow:var(--inner);font-weight:500;
+}
+.select-btn:active{transform:none}
+.select-btn::after{content:"▾";color:var(--sub);margin-left:8px;font-size:12px}
+.select-menu{
+  position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:20;
+  background:var(--card-solid);border:1px solid var(--glass-border);
+  border-radius:16px;padding:6px;box-shadow:var(--shadow);
+  max-height:260px;overflow:auto;
+}
+.select-menu button{
+  flex:none;min-width:0;width:100%;
+  background:transparent;color:var(--text);border:0;box-shadow:none;
+  border-radius:12px;padding:11px 12px;min-height:42px;
+  text-align:left;font-weight:500;display:block;
+}
+.select-menu button:active{transform:none}
+.select-menu button.active{background:var(--primary-soft);color:var(--primary)}
 textarea{min-height:96px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
 .hint{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.5}
 
