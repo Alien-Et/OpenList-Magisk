@@ -46,9 +46,47 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 ## 系统要求
 
-- Android 设备，ARM 或 ARM64（x86 会直接中止安装）
+- Android 设备，支持 **arm / arm64 / x86 / x86_64** 四种架构
 - Magisk v20.4 以上、KernelSU 或 APatch，任选其一
 - Root 权限
+
+## 安装包怎么选
+
+一共 5 个包，分两个更新通道。**按架构挑一个装，以后它就自己跟着自己那条通道更新。**
+
+| 包名 | 内含二进制 | 体积 | 适合谁 |
+|---|---|---|---|
+| `openlist-magisk-vX-arm64.zip` | arm64 | ~58 MB | **绝大多数手机，首选** |
+| `openlist-magisk-vX-arm.zip` | arm | ~60 MB | 只有 arm32 的老设备 |
+| `openlist-magisk-vX-amd64.zip` | amd64 | ~58 MB | x86_64 设备（WSA、部分掌机） |
+| `openlist-magisk-vX-386.zip` | 386 | ~59 MB | x86 设备（模拟器） |
+| `openlist-magisk-online.zip` | 无 | ~76 KB | 想省流量，安装时现下（~55 MB） |
+
+全部挂在**同一个 `vX.Y.Z` Release** 下。4 个架构包跟上游 OpenList 走，`online` 由你手动触发构建 —— 同一个版本号可以只有 online 包，也可以两者都有。
+
+**装错了也不会坏**：包里没有当前架构的二进制时，安装脚本会自动去下载，见下一节。
+
+## 两条更新通道
+
+| 通道 | 包内 `updateJson` | 版本号来源 | 更新日志 |
+|---|---|---|---|
+| 架构通道（arm64 / arm / amd64 / 386） | `update-<arch>.json` | 上游 OpenList 官方，CI 自动同步 | 上游 CHANGELOG |
+| 在线通道（online） | `update.json` | 手动触发 `online.yml` 填版本号 | `CHANGELOG-ONLINE.md` |
+
+装的是哪个包，模块管理器就检查哪条通道，两者互不干扰 —— 上游发新版不会把 online 用户的版本号顶掉，反过来也一样。
+
+## 二进制获取顺序
+
+`customize.sh` 按下面四级回退，任一成功就停：
+
+1. **包内二进制** `$MODROOT/openlist-<arch>` —— 4 个架构包走这条
+2. **Download 目录** `/sdcard/Download/openlist-android-<arch>.tar.gz` —— 提前放好就能离线装
+3. **在线下载** —— 调 `control.sh fetch-bin <arch> <版本>`，直连 + 15 个国内镜像依次试，带 md5 校验
+4. **全失败** —— `abort` 并打印手动下载地址与放置路径
+
+在线下载走 `releases/download/vX.Y.Z/` 固定路径，不消耗 GitHub API 额度、不需要 token，并且**下载的二进制版本号与模块版本严格一致**。
+
+> TWRP/recovery 里刷机且断网时，先按第 2 条把 `openlist-android-<arch>.tar.gz` 拷进 Download 目录，再刷 `online` 包也能装上。
 
 ## 框架兼容性
 
@@ -63,7 +101,8 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 ## 安装步骤
 
 1. **下载模块**
-   - 从 [GitHub Releases](https://github.com/Alien-Et/OpenList-Magisk/releases) 下载最新版本
+   - 从 [GitHub Releases](https://github.com/Alien-Et/OpenList-Magisk/releases) 挑一个包（见 [安装包怎么选](#安装包怎么选)）
+   - ARM64 设备拿 `openlist-magisk-vX-arm64.zip` 就行；不确定架构可以用 `openlist-magisk-online.zip`（约 76 KB，安装时自动识别并下载）
 
 2. **安装配置**
    - 打开 Magisk 管理器、KernelSU 管理器 或 APatch 管理器
@@ -72,6 +111,7 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
      - 选择二进制文件安装位置
      - 选择数据目录存储位置
      - 更新安装时如果检测到旧数据，会多问一句要不要一起迁过来
+   - 包里没有对应架构的二进制时会自动在线下载，装的时候别断网
 
 3. **完成安装**
    - 等待安装完成
@@ -155,7 +195,7 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 ## 更新说明
 
-- 管理器里的模块更新看 `update.json`，`versionCode` 变大才会提示
+- 模块更新分两条通道：架构包看 `update-<arch>.json`，online 包看 `update.json`；都是 `versionCode` 变大才提示，互不干扰
 - 模块更新只替换模块文件，不动数据目录
 - WebUI 里的「立即更新」是给二进制用的：后台下载、显示进度、起不来自动回滚
 - 版本列表只走 GitHub 官方 API；不通时用上次缓存并标注「离线缓存」
@@ -178,6 +218,8 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - **优化** WebUI 打开速度：各区块并行加载、GitHub API 走 gzip（5.39 MB → 412 KB）、路径体检与版本列表本地缓存
 - **新增** 安装界面可选数据迁移：更新安装时检测到旧数据且换了目录，会多一次音量键确认（音量+ 迁移并删源 / 音量- 跳过，90 秒无操作按跳过）；校验不过则旧数据原样保留
 - **新增** 安装包内随附 `LICENSE`（MIT 副本）、`LICENSE-AGPL-3.0.txt`（AGPL-3.0 全文）与 `THIRD-PARTY.md`（第三方组件说明）；README 顶部补许可提示，并把徽章补齐为 release / license / bundled binary / arch / platform
+- **重构** 产物拆成 5 个：4 个单架构包（arm64 / arm / amd64 / 386，各带自己的 `updateJson` 走独立更新通道）+ 1 个不含二进制的 `online.zip`（约 76 KB）
+- **新增** 安装时四级回退取二进制：包内 → Download 目录 → 在线下载（复用 `control.sh` 的镜像列表与 md5 校验）→ 中止并给手动指引；下载的二进制版本与模块版本严格对齐
 
 > 本次更新只测试到「WebUI 能正常用」这一步，没有做完整回归，可能还有没挖出来的隐藏 bug。遇到问题请到仓库提 issue。
 
@@ -196,23 +238,15 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 4. 二进制迁移同理，校验一致后删除旧文件，不会同时留两份
 5. 迁移完成后 WebUI 自动刷新状态、路径体检与日志
 
-## 征求意见：要不要把内嵌二进制砍掉？
+## 关于内嵌二进制
 
-想了两天，倾向是：**模块里不再放二进制**，安装时让用户选「在线下载对应架构」，模块体积能从一百多兆掉到十几 KB。
+以前这里是「征求意见」——要不要把内嵌二进制砍掉。现在定下来了：**每个架构各发一个包，外加一个纯在线包。**
 
-好处很直接：OpenList 发版不用再跟着打一百多兆的包，仓库和 Release 都轻，用户也只需要自己架构那一份。
+- 4 个架构包（arm64 / arm / amd64 / 386）各自只带一份二进制，断网、recovery 里都能装
+- `online.zip` 只有约 76 KB，安装时按设备架构现下
+- 包里没有对应架构的二进制时，`customize.sh` 会自动在线下载（复用 `control.sh` 的镜像列表与 md5 校验），失败才中止并打印手动下载指引
 
-但有个绕不过去的前提：Magisk 用户没有 WebUI，`ksu.exec` 那条路走不了，只能靠模块卡片的「操作」按钮或终端脚本更新、回退。要是安装时正好没网，或者哪天镜像全挂，模块里又没二进制，这台机器就起不来了。
-
-所以大概有三个方向：
-
-1. **纯在线**：包最小，但断网装不上，recovery 里刷机基本无解
-2. **安装时二选一**：问一句「在线下载（小包）/ 用内置二进制（大包）」，那就得继续维护 full 包
-3. **只留一份兜底**：内置 arm64（绝大多数机器），arm 走在线下载，体积能砍掉一半左右
-
-目前我偏向 2，但 2 等于还要发 full 包，减负有限；3 更实际，代价是少数 32 位设备断网时装不了。
-
-你们实际怎么用？有没有「断网刷机」这种场景？评论区或 issue 里说一声，我再定。
+不再有「双架构包」或「四合一 full 包」——一个设备只需要一份二进制，多塞的只是白占体积。细节见 [安装包怎么选](#安装包怎么选)、[两条更新通道](#两条更新通道) 与 [二进制获取顺序](#二进制获取顺序)。
 
 ## 贡献
 - 欢迎提交 Issue 和 Pull Request

@@ -1,0 +1,138 @@
+name: 发布纯在线包
+
+# 职责：只补一个 openlist-magisk-online.zip（不含二进制）到对应版本的 Release，
+# 并改写 update.json。架构包由 1.yml 负责，两者往同一个 Release 挂不同资产。
+#
+# 触发：手动触发，填模块版本号。版本号等于上游已发布版本时，直接补到这个 Release；
+# 版本号领先上游时，新建 Release（自动建同名 tag），等上游追上来后 1.yml 再补架构包。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '模块版本号，例如 v4.2.11（不带任何前缀）'
+        required: true
+        type: string
+      notes:
+        description: 'Release 说明（留空则用 CHANGELOG-ONLINE.md 全文）'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip gh
+
+      # ---------- 1. 解析版本号 ----------
+      - name: 解析版本号
+        run: |
+          set -e
+          V="${{ inputs.version }}"
+          case "$V" in
+            v[0-9]*) ;;
+            *) echo "::error::版本号格式不对：$V（应为 vX.Y.Z）"; exit 1 ;;
+          esac
+          NUM="${V#v}"
+          CODE=$(echo "$NUM" | awk -F. '{print $1 * 10000 + $2 * 100 + $3}')
+          echo "VER=$V"     >> $GITHUB_ENV
+          echo "CODE=$CODE" >> $GITHUB_ENV
+          echo "版本 $V / versionCode $CODE"
+
+      # ---------- 2. 改写 update.json ----------
+      # zipUrl 直接指向该版本 Release 里的 online 包，不用 latest：
+      # latest 指向最新那个 Release，可能被上游架构包抢先，那时地址就 404。
+      - name: 改写 update.json
+        run: |
+          set -e
+          cat > update.json <<EOF
+          {
+              "version": "${{ env.VER }}",
+              "versionCode": ${{ env.CODE }},
+              "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/${{ env.VER }}/openlist-magisk-online.zip",
+              "changelog": "https://raw.githubusercontent.com/Alien-Et/OpenList-Magisk/main/CHANGELOG-ONLINE.md"
+          }
+          EOF
+          cat update.json
+
+      # ---------- 3. 打包 online 包 ----------
+      # module.prop 注入模块版本号，updateJson 指向仓库根 update.json。
+      # 仓库里的 module.prop 只是模板，不跟着改。
+      - name: 打包 online 包
+        run: |
+          set -e
+          d=".pkg/online"
+          rm -rf "$d"; mkdir -p "$d"
+          cp -a OpenList-Magisk/. "$d/"
+          rm -f "$d"/openlist-arm "$d"/openlist-arm64 "$d"/openlist-amd64 "$d"/openlist-386
+          sed -i \
+            -e "s|^version=.*|version=${{ env.VER }}|" \
+            -e "s|^versionCode=.*|versionCode=${{ env.CODE }}|" \
+            -e "s|^updateJson=.*|updateJson=https://raw.githubusercontent.com/Alien-Et/OpenList-Magisk/main/update.json|" \
+            "$d/module.prop"
+          ( cd "$d" && zip -r -q "../../openlist-magisk-online.zip" . )
+          rm -rf "$d"
+
+          echo "=== 包内检查 ==="
+          unzip -p openlist-magisk-online.zip module.prop | grep -E '^(version|versionCode|updateJson)='
+          echo "二进制（应为空）: $(unzip -l openlist-magisk-online.zip | grep -oE 'openlist-[a-z0-9]+$' | tr '\n' ' ')"
+          printf '体积: %s 字节\n' "$(stat -c %s openlist-magisk-online.zip)"
+
+      # ---------- 4. 提交 update.json ----------
+      # 1.yml 的 paths-ignore 里有 update.json，这次提交不会触发上游同步工作流。
+      - name: 提交 update.json
+        run: |
+          set -e
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add update.json
+          git commit -m "release(online): ${{ env.VER }}" || echo "update.json 无更改"
+          git push origin main
+
+      # ---------- 5. 挂到 Release ----------
+      - name: 发布 Release 资产
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          V="${{ env.VER }}"
+          if [ -n "${{ inputs.notes }}" ]; then
+            printf '%s\n' "${{ inputs.notes }}" > release_notes.txt
+          elif [ -f CHANGELOG-ONLINE.md ]; then
+            cp CHANGELOG-ONLINE.md release_notes.txt
+          else
+            echo "OpenList 模块 $V（纯在线包）" > release_notes.txt
+          fi
+
+          if gh release view "$V" &>/dev/null; then
+            echo "Release $V 已存在，追加 online 包"
+            gh release upload "$V" openlist-magisk-online.zip --clobber
+            echo "" >> release_notes.txt
+            echo "> 纯在线包（不含二进制，安装时按设备架构自动下载）已上传。" >> release_notes.txt
+            gh release edit "$V" --notes-file release_notes.txt
+          else
+            echo "Release $V 不存在，创建（只含 online 包）"
+            echo "" >> release_notes.txt
+            echo "> 这个版本目前只有纯在线包；架构包会等上游 OpenList 发布同版本后由 CI 自动补上。" >> release_notes.txt
+            gh release create "$V" \
+              --title "OpenList Magisk Module $V" \
+              --notes-file release_notes.txt \
+              --draft=false \
+              --prerelease=false \
+              openlist-magisk-online.zip
+          fi
+          echo "Release $V 处理完成"
+
+      - name: 清理临时文件
+        if: always()
+        run: rm -rf .pkg openlist-magisk-online.zip release_notes.txt

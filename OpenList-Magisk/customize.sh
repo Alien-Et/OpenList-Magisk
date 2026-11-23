@@ -141,39 +141,124 @@ esac
 mkdir -p "$BINARY_PATH"
 
 # 安装二进制文件
+# 架构判定：框架给 $ARCH，部分老框架只给 abi，两处都要看
 case "$ARCH" in
     arm64) BIN_ARCH=arm64 ;;
     arm)   BIN_ARCH=arm ;;
+    x86_64|amd64) BIN_ARCH=amd64 ;;
+    x86|i386|i686) BIN_ARCH=386 ;;
     *)
         case "$DEV_ABI" in
             arm64*)        BIN_ARCH=arm64 ;;
             armeabi*|arm*) BIN_ARCH=arm ;;
-            *) abort "❌ 不支持的架构：${ARCH:-未知} / ${DEV_ABI:-未知}，本模块仅提供 arm / arm64" ;;
+            x86_64*)       BIN_ARCH=amd64 ;;
+            x86*)          BIN_ARCH=386 ;;
+            *) abort "❌ 无法识别的架构：${ARCH:-未知} / ${DEV_ABI:-未知}" ;;
         esac
         ;;
 esac
+ui_print "🎯 目标架构：$BIN_ARCH"
 
-if [ "$BIN_ARCH" = "arm64" ]; then
-    ui_print "📦 安装 ARM64 版本..."
-    if [ -f "$MODROOT/openlist-arm64" ]; then
-        mv "$MODROOT/openlist-arm64" "$BINARY_PATH/$BINARY_NAME"
-        rm -f "$MODROOT/openlist-arm"
+# 取二进制的四级回退：
+#   ① 包内 $MODROOT/openlist-<arch>           （完整包 / 单架构包）
+#   ② /sdcard/Download/openlist-android-<arch>.tar.gz  （用户提前放好的离线兜底）
+#   ③ control.sh fetch-bin <arch>             （在线下载，复用镜像列表与 md5 校验）
+#   ④ 全失败 → abort 并打印手动下载指引
+BIN_SRC=""
+BIN_FROM=""
+MOD_VER=""
+
+PKG_BIN="$MODROOT/openlist-$BIN_ARCH"
+if [ -f "$PKG_BIN" ]; then
+    ui_print "📦 使用安装包内置的 $BIN_ARCH 二进制"
+    BIN_SRC="$PKG_BIN"
+    BIN_FROM="package"
+fi
+
+if [ -z "$BIN_SRC" ]; then
+    for d in /sdcard/Download /storage/emulated/0/Download /sdcard0/Download; do
+        f="$d/openlist-android-$BIN_ARCH.tar.gz"
+        [ -f "$f" ] || continue
+        ui_print "📂 发现手动放置的压缩包：$f"
+        if tar -xzf "$f" -C "$MODROOT" 2>/dev/null && [ -f "$MODROOT/openlist" ]; then
+            mv -f "$MODROOT/openlist" "$MODROOT/.openlist-fetched" 2>/dev/null
+            BIN_SRC="$MODROOT/.openlist-fetched"
+            BIN_FROM="manual"
+            break
+        fi
+        ui_print "⚠️ 解压失败，继续尝试在线下载"
+    done
+fi
+
+if [ -z "$BIN_SRC" ]; then
+    # 二进制版本必须跟模块版本对齐：
+    # 只取 latest 会出现「模块 v4.2.10、二进制 v4.2.11」的错配，
+    # 出了问题既对不上日志也回不了旧版。这里把 module.prop 的 version 传下去。
+    MOD_VER="$(sed -n 's/^version=//p' "$MODROOT/module.prop" 2>/dev/null | head -n 1)"
+    case "$MOD_VER" in
+        v[0-9]*) ;;
+        *) MOD_VER="" ;;   # 取不到就让 control.sh 退回 latest
+    esac
+    if [ -n "$MOD_VER" ]; then
+        ui_print "🌐 安装包内没有 $BIN_ARCH 二进制，在线下载 $MOD_VER 版本（约 55 MB）"
     else
-        abort "❌ 错误：未找到 ARM64 版本文件"
+        ui_print "🌐 安装包内没有 $BIN_ARCH 二进制，在线下载最新版本（约 55 MB）"
     fi
-else
-    ui_print "📦 安装 ARM 版本..."
-    if [ -f "$MODROOT/openlist-arm" ]; then
-        mv "$MODROOT/openlist-arm" "$BINARY_PATH/$BINARY_NAME"
-        rm -f "$MODROOT/openlist-arm64"
+    ui_print "   网络慢时请耐心等待，别退出管理器"
+    if [ -f "$MODROOT/control.sh" ]; then
+        chmod 755 "$MODROOT/control.sh" 2>/dev/null || true
+        FETCH_OUT="$MODROOT/.fetch.out"
+        sh "$MODROOT/control.sh" fetch-bin "$BIN_ARCH" $MOD_VER > "$FETCH_OUT" 2>&1
+        FETCH_OK="$(sed -n 's/^ok=//p' "$FETCH_OUT" 2>/dev/null | head -n 1)"
+        BIN_SRC="$(sed -n 's/^path=//p' "$FETCH_OUT" 2>/dev/null | head -n 1)"
+        FETCH_ERR="$(sed -n 's/^error=//p' "$FETCH_OUT" 2>/dev/null | head -n 1)"
+        rm -f "$FETCH_OUT" 2>/dev/null
+        if [ "$FETCH_OK" = "1" ] && [ -n "$BIN_SRC" ] && [ -f "$BIN_SRC" ]; then
+            ui_print "✅ 下载完成"
+            BIN_FROM="online"
+        else
+            ui_print "❌ 在线下载失败：${FETCH_ERR:-未知原因}"
+            BIN_SRC=""
+        fi
     else
-        abort "❌ 错误：未找到 ARM 版本文件"
+        ui_print "❌ 模块内缺少 control.sh，无法在线下载"
     fi
 fi
+
+if [ -z "$BIN_SRC" ]; then
+    ui_print " "
+    ui_print "━━━━━━━━━━━━━━━━━━━━━━"
+    ui_print "❌ 无法获取 $BIN_ARCH 架构的 OpenList 二进制"
+    ui_print " "
+    ui_print "手动解决："
+    ui_print "1. 用浏览器打开下面地址下载"
+    if [ -n "$MOD_VER" ]; then
+        ui_print "   https://github.com/OpenListTeam/OpenList/releases/download/$MOD_VER/openlist-android-$BIN_ARCH.tar.gz"
+    else
+        ui_print "   https://github.com/OpenListTeam/OpenList/releases/latest/download/openlist-android-$BIN_ARCH.tar.gz"
+    fi
+    ui_print "2. 把下载到的文件放进 Download 目录（不要解压）"
+    ui_print "3. 重新刷入本模块"
+    ui_print "━━━━━━━━━━━━━━━━━━━━━━"
+    abort "安装中止：缺少 $BIN_ARCH 二进制"
+fi
+
+mv -f "$BIN_SRC" "$BINARY_PATH/$BINARY_NAME" || abort "❌ 二进制安装失败"
+# 清掉包里其它架构的二进制，避免模块目录白占空间
+for a in arm arm64 amd64 386; do
+    [ "$a" = "$BIN_ARCH" ] || rm -f "$MODROOT/openlist-$a" 2>/dev/null
+done
+rm -f "$MODROOT/.openlist-fetched" 2>/dev/null
 
 chmod 755 "$BINARY_PATH/$BINARY_NAME"
 
 [ "$BINARY_PATH" = "$MODROOT/system/bin" ] && chcon -R u:object_r:system_file:s0 "$BINARY_PATH/$BINARY_NAME"
+
+case "$BIN_FROM" in
+    package) ui_print "✅ 已安装 $BIN_ARCH 二进制（安装包内置）" ;;
+    manual)  ui_print "✅ 已安装 $BIN_ARCH 二进制（来自 Download 目录）" ;;
+    online)  ui_print "✅ 已安装 $BIN_ARCH 二进制（在线下载）" ;;
+esac
 
 # 选择数据目录
 make_selection "data" "2"

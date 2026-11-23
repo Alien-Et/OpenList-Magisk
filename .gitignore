@@ -4,6 +4,13 @@ openlist-magisk-*.zip
 # CI / 本地打包时下载的二进制（由 workflow 每次重新下载，不入库）
 OpenList-Magisk/openlist-arm
 OpenList-Magisk/openlist-arm64
+OpenList-Magisk/openlist-amd64
+OpenList-Magisk/openlist-386
+/openlist-arm
+/openlist-arm64
+/openlist-amd64
+/openlist-386
 
 # 本地打包临时目录
 .build/
+.pkg/

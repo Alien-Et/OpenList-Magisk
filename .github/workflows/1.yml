@@ -1,36 +1,51 @@
-name: 构建 OpenList Magisk 模块
+name: 构建 OpenList 架构包
+
+# 职责：只跟上游 OpenList 走，产出 4 个单架构包 + 4 份架构更新清单。
+# 不碰 update.json（那是 online 通道的），也不碰仓库里的 module.prop（打包时临时注入）。
+# online 包由 online.yml 负责，两条通道互不触发。
 
 on:
   schedule:
-    - cron: '0 */4 * * *'  # 每4小时运行一次
-  workflow_dispatch:  # 支持手动触发
+    - cron: '0 */4 * * *'  # 每 4 小时检查一次上游
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '强制重建（忽略已存在的 Release）'
+        type: boolean
+        default: false
   push:
     branches:
-      - main  # 推送 main 分支时触发
+      - main
     paths-ignore:
-      - 'update.json'
-      - 'OpenList-Magisk/module.prop'  # 忽略由工作流自动更新的文件
+      # CI 自己会改的文件，忽略掉避免自我触发
+      - 'update.json'                  # online 通道的清单，由 online.yml 维护
+      - 'update-*.json'                # 架构通道的清单，本工作流自己提交
+      - 'CHANGELOG-ONLINE.md'          # online 通道的日志
+      - 'OpenList-Magisk/CHANGELOG.md' # 上游日志，本工作流自己提交
+      - 'OpenList-Magisk/module.prop'  # 打包时临时注入，仓库里是 online 的兜底值
 
 permissions:
-  contents: write  # 允许推送代码和创建 Release
-  actions: read    # 允许读取 Actions 状态
+  contents: write
+  actions: read
+
+env:
+  REPO: https://github.com/Alien-Et/OpenList-Magisk
+  RAW: https://raw.githubusercontent.com/Alien-Et/OpenList-Magisk/main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 检出仓库代码
       - name: 检出仓库代码
         uses: actions/checkout@v4
 
-      # 安装依赖工具
       - name: 安装依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y curl zip gh
 
-      # 获取 OpenList 最新版本
+      # ---------- 1. 查上游最新版本 ----------
       - name: 获取 OpenList 最新版本
         id: get_version
         env:
@@ -55,7 +70,6 @@ jobs:
             exit 1
           fi
 
-          # 提取版本号
           VERSION=$(echo "$BODY" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           if [ -z "$VERSION" ]; then
             echo "::error::无法提取版本号"
@@ -63,215 +77,226 @@ jobs:
             exit 1
           fi
 
-          # 生成版本代码：主版本×10000 + 次版本×100 + 修订号
-          # 例如 v4.2.11 -> 40211；次版本最多 99、修订号最多 99，避免 v4.10.0 与 v5.0.0 撞号
+          # 版本代码：主×10000 + 次×100 + 修订号（v4.2.11 -> 40211）
           VERSION_NUM=$(echo "$VERSION" | tr -d 'v')
           VERSION_CODE=$(echo "$VERSION_NUM" | awk -F. '{print $1 * 10000 + $2 * 100 + $3}')
 
-          # 提取下载链接
+          # 四个架构的下载链接
           ARM_URL=$(echo "$BODY" | grep '"browser_download_url":' | grep 'openlist-android-arm.tar.gz' | sed -E 's/.*"([^"]+)".*/\1/')
           ARM64_URL=$(echo "$BODY" | grep '"browser_download_url":' | grep 'openlist-android-arm64.tar.gz' | sed -E 's/.*"([^"]+)".*/\1/')
-          
-          # 提取 CHANGELOG（使用 Python 处理 JSON）
-          CHANGELOG=$(python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('body', ''))" <<< "$BODY")
+          AMD64_URL=$(echo "$BODY" | grep '"browser_download_url":' | grep 'openlist-android-amd64.tar.gz' | sed -E 's/.*"([^"]+)".*/\1/')
+          I386_URL=$(echo "$BODY" | grep '"browser_download_url":' | grep 'openlist-android-386.tar.gz' | sed -E 's/.*"([^"]+)".*/\1/')
 
-          if [ -z "$ARM_URL" ] || [ -z "$ARM64_URL" ]; then
-            echo "::error::无法提取二进制下载链接"
+          if [ -z "$ARM_URL" ] || [ -z "$ARM64_URL" ] || [ -z "$AMD64_URL" ] || [ -z "$I386_URL" ]; then
+            echo "::error::无法提取二进制下载链接（arm=$ARM_URL arm64=$ARM64_URL amd64=$AMD64_URL 386=$I386_URL）"
             exit 1
           fi
 
-          # 设置环境变量
+          CHANGELOG=$(python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('body', ''))" <<< "$BODY")
+
           {
             echo "OPENLIST_VERSION=$VERSION"
             echo "OPENLIST_VERSION_CODE=$VERSION_CODE"
             echo "OPENLIST_ARM_URL=$ARM_URL"
             echo "OPENLIST_ARM64_URL=$ARM64_URL"
+            echo "OPENLIST_AMD64_URL=$AMD64_URL"
+            echo "OPENLIST_386_URL=$I386_URL"
             echo "OPENLIST_CHANGELOG<<EOF"
             echo "$CHANGELOG"
             echo "EOF"
           } >> $GITHUB_ENV
 
-      # 检查当前模块版本
-      - name: 检查当前模块版本
-        id: check_version
-        run: |
-          if [ -f update.json ]; then
-            CURRENT_VERSION=$(grep '"version":' update.json | sed -E 's/.*"version":\s*"([^"]+)".*/\1/')
-            echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_ENV
-          else
-            echo "CURRENT_VERSION=none" >> $GITHUB_ENV
-          fi
-
-      # 比较版本并决定是否构建
+      # ---------- 2. 要不要构建 ----------
+      # 判断「四个架构包齐不齐」，而不是「Release 在不在」：
+      # online 包可能已经给这个版本建了 Release（里面只有 online.zip），
+      # 那种情况下架构包还缺着，必须补上传。只看 Release 存在会永久跳过。
       - name: 检查是否需要构建
         id: should_build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 检查版本是否一致
-          VERSION_MATCH=false
-          if [ "${{ env.CURRENT_VERSION }}" != "none" ] && [ "${{ env.OPENLIST_VERSION }}" = "${{ env.CURRENT_VERSION }}" ]; then
-            VERSION_MATCH=true
-          fi
-          
-          # 检查 Release 是否存在
-          RELEASE_EXISTS=false
-          if [ "$VERSION_MATCH" = "true" ]; then
-            if gh release view "${{ env.OPENLIST_VERSION }}" &>/dev/null; then
-              RELEASE_EXISTS=true
-            fi
-          fi
-          
-          # 决定是否构建
-          if [ "${{ env.CURRENT_VERSION }}" = "none" ] || [ "${{ env.OPENLIST_VERSION }}" != "${{ env.CURRENT_VERSION }}" ] || [ "$RELEASE_EXISTS" = "false" ]; then
-            echo "需要构建新模块："
-            if [ "${{ env.CURRENT_VERSION }}" = "none" ]; then
-              echo "- 当前版本不存在，首次构建"
-            elif [ "${{ env.OPENLIST_VERSION }}" != "${{ env.CURRENT_VERSION }}" ]; then
-              echo "- 版本不匹配：OpenList 版本 ${{ env.OPENLIST_VERSION }}，当前模块版本 ${{ env.CURRENT_VERSION }}"
-            elif [ "$RELEASE_EXISTS" = "false" ]; then
-              echo "- 版本匹配但 Release 不存在"
-            fi
+          V="${{ env.OPENLIST_VERSION }}"
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "手动强制重建"
             echo "SHOULD_BUILD=true" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          NEED=1
+          if gh release view "$V" &>/dev/null; then
+            ASSETS=$(gh release view "$V" --json assets -q '.assets[].name' 2>/dev/null || true)
+            MISSING=""
+            for a in arm64 arm amd64 386; do
+              echo "$ASSETS" | grep -qx "openlist-magisk-$V-$a.zip" || MISSING="$MISSING $a"
+            done
+            if [ -z "$MISSING" ]; then
+              NEED=0
+              echo "Release $V 的四个架构包已齐全，跳过"
+            else
+              echo "Release $V 已存在，但缺架构包:$MISSING，补构建"
+            fi
           else
-            echo "模块版本已是最新 (${{ env.OPENLIST_VERSION }}) 且 Release 存在，无需构建"
-            echo "SHOULD_BUILD=false" >> $GITHUB_ENV
+            echo "Release $V 不存在，开始构建"
           fi
 
-      # 同步 OpenList 二进制文件
-      - name: 同步 OpenList 二进制文件
+          echo "SHOULD_BUILD=$([ "$NEED" = "1" ] && echo true || echo false)" >> $GITHUB_ENV
+
+      # ---------- 3. 下载四个架构的二进制 ----------
+      - name: 下载二进制
         if: env.SHOULD_BUILD == 'true'
         run: |
-          # 下载并解压 ARM 版本
-          for i in {1..3}; do
-            if curl -L -o openlist-arm.tar.gz "${{ env.OPENLIST_ARM_URL }}"; then
-              break
-            fi
-            echo "下载 ARM 版本失败，重试 $i/3"
-            sleep $((5 * i))
-          done
-          
-          if [ ! -f openlist-arm.tar.gz ]; then
-            echo "::error::下载 ARM 版本失败"
-            exit 1
-          fi
-          
-          tar -xzf openlist-arm.tar.gz
-          if [ ! -f openlist ]; then
-            echo "::error::解压 ARM 版本失败"
-            exit 1
-          fi
-          mv openlist openlist-arm
-          rm -f openlist-arm.tar.gz
+          set -e
+          dl() { # url outname
+            local url="$1" name="$2" i
+            for i in 1 2 3; do
+              if curl -fL --retry 2 --connect-timeout 15 -m 900 -o "$name.tar.gz" "$url"; then
+                tar -xzf "$name.tar.gz" || return 1
+                [ -f openlist ] || return 1
+                mv -f openlist "$name"
+                chmod 755 "$name"
+                rm -f "$name.tar.gz"
+                echo "✅ $name $(stat -c %s "$name") 字节"
+                return 0
+              fi
+              echo "下载 $name 失败，重试 $i/3"
+              rm -f "$name.tar.gz"
+              sleep $((5 * i))
+            done
+            echo "::error::下载 $name 失败"
+            return 1
+          }
+          dl "${{ env.OPENLIST_ARM64_URL }}" openlist-arm64 || exit 1
+          dl "${{ env.OPENLIST_ARM_URL }}"   openlist-arm   || exit 1
+          dl "${{ env.OPENLIST_AMD64_URL }}" openlist-amd64 || exit 1
+          dl "${{ env.OPENLIST_386_URL }}"   openlist-386   || exit 1
 
-          # 下载并解压 ARM64 版本
-          for i in {1..3}; do
-            if curl -L -o openlist-arm64.tar.gz "${{ env.OPENLIST_ARM64_URL }}"; then
-              break
-            fi
-            echo "下载 ARM64 版本失败，重试 $i/3"
-            sleep $((5 * i))
-          done
-          
-          if [ ! -f openlist-arm64.tar.gz ]; then
-            echo "::error::下载 ARM64 版本失败"
-            exit 1
-          fi
-          
-          tar -xzf openlist-arm64.tar.gz
-          if [ ! -f openlist ]; then
-            echo "::error::解压 ARM64 版本失败"
-            exit 1
-          fi
-          mv openlist openlist-arm64
-          rm -f openlist-arm64.tar.gz
-
-          # 移动二进制文件到模块目录
-          if [ ! -f openlist-arm ] || [ ! -f openlist-arm64 ]; then
-            echo "::error::二进制文件不存在"
-            exit 1
-          fi
-          
-          mv openlist-arm OpenList-Magisk/
-          mv openlist-arm64 OpenList-Magisk/
-
-          # 设置权限
-          chmod 755 OpenList-Magisk/openlist-arm OpenList-Magisk/openlist-arm64
-
-      # 更新配置文件
-      - name: 更新配置文件
+      # ---------- 4. 打四个单架构包 ----------
+      # 每个包一个独立目录副本，把 module.prop 的 version/versionCode/updateJson
+      # 注入成这个架构自己的值。仓库里的 module.prop 从头到尾不改。
+      - name: 打包四个架构包
         if: env.SHOULD_BUILD == 'true'
         run: |
-          # 更新 update.json
-          cat > update.json << EOF
+          set -e
+          V="${{ env.OPENLIST_VERSION }}"
+          CODE="${{ env.OPENLIST_VERSION_CODE }}"
+          BASE="openlist-magisk-$V"
+          RAW="${{ env.RAW }}"
+
+          build_pkg() { # arch bin
+            local arch="$1" bin="$2"
+            local d=".pkg/$arch"
+            rm -rf "$d"; mkdir -p "$d"
+            cp -a OpenList-Magisk/. "$d/"
+            rm -f "$d"/openlist-arm "$d"/openlist-arm64 "$d"/openlist-amd64 "$d"/openlist-386
+            sed -i \
+              -e "s|^version=.*|version=$V|" \
+              -e "s|^versionCode=.*|versionCode=$CODE|" \
+              -e "s|^updateJson=.*|updateJson=$RAW/update-$arch.json|" \
+              "$d/module.prop"
+            ( cd "$d" && zip -r -q "../../$BASE-$arch.zip" . )
+            zip -j -q "$BASE-$arch.zip" "$bin"
+            rm -rf "$d"
+            printf '%-46s %10s 字节\n' "$BASE-$arch.zip" "$(stat -c %s "$BASE-$arch.zip")"
+          }
+
+          build_pkg arm64 openlist-arm64
+          build_pkg arm   openlist-arm
+          build_pkg amd64 openlist-amd64
+          build_pkg 386   openlist-386
+
+          echo "=== 包内检查 ==="
+          for f in "$BASE-arm64.zip" "$BASE-arm.zip" "$BASE-amd64.zip" "$BASE-386.zip"; do
+            echo "--- $f"
+            unzip -p "$f" module.prop | grep -E '^(version|versionCode|updateJson)='
+            echo "    二进制: $(unzip -l "$f" | grep -oE 'openlist-[a-z0-9]+$' | tr '\n' ' ')"
+          done
+
+      # ---------- 5. 生成并提交架构更新清单 ----------
+      - name: 生成架构更新清单
+        if: env.SHOULD_BUILD == 'true'
+        run: |
+          set -e
+          V="${{ env.OPENLIST_VERSION }}"
+          CODE="${{ env.OPENLIST_VERSION_CODE }}"
+          gen() { # arch
+            cat > "update-$1.json" <<EOF
           {
-              "version": "${{ env.OPENLIST_VERSION }}",
-              "versionCode": ${{ env.OPENLIST_VERSION_CODE }},
-              "zipUrl": "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ env.OPENLIST_VERSION }}/openlist-magisk-${{ env.OPENLIST_VERSION }}.zip",
-              "changelog": "${{ github.server_url }}/${{ github.repository }}/raw/main/OpenList-Magisk/CHANGELOG.md"
+              "version": "$V",
+              "versionCode": $CODE,
+              "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/$V/openlist-magisk-$V-$1.zip",
+              "changelog": "https://github.com/Alien-Et/OpenList-Magisk/raw/main/OpenList-Magisk/CHANGELOG.md"
           }
           EOF
+          }
+          gen arm64
+          gen arm
+          gen amd64
+          gen 386
+          cat update-arm64.json
 
-          # 更新 module.prop
-          if [ -f OpenList-Magisk/module.prop ]; then
-            sed -i "s/^version=.*/version=${{ env.OPENLIST_VERSION }}/" OpenList-Magisk/module.prop
-            sed -i "s/^versionCode=.*/versionCode=${{ env.OPENLIST_VERSION_CODE }}/" OpenList-Magisk/module.prop
-          else
-            echo "::error::module.prop 文件不存在"
-            exit 1
-          fi
-
-          # 更新 CHANGELOG.md
-          mkdir -p OpenList-Magisk
+          # 上游日志写进模块目录，供 changelog 字段引用
           echo "${{ env.OPENLIST_CHANGELOG }}" > OpenList-Magisk/CHANGELOG.md
 
-          # 提交更改
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add update.json OpenList-Magisk/module.prop OpenList-Magisk/CHANGELOG.md
-          git commit -m "更新模块到 OpenList ${{ env.OPENLIST_VERSION }}" || echo "无更改需要提交"
+          git add update-arm64.json update-arm.json update-amd64.json update-386.json OpenList-Magisk/CHANGELOG.md
+          git commit -m "chore(upstream): 同步 OpenList $V 的架构清单与日志" || echo "无更改需要提交"
           git push origin main
 
-      # 打包模块
-      - name: 打包模块
-        if: env.SHOULD_BUILD == 'true'
-        run: |
-          cd OpenList-Magisk
-          zip -r ../openlist-magisk-${{ env.OPENLIST_VERSION }}.zip .
-          cd ..
-
-      # 创建 Release
+      # ---------- 6. 发布 Release ----------
       - name: 创建 Release
         if: env.SHOULD_BUILD == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 检查 Release 是否已存在
-          if gh release view "${{ env.OPENLIST_VERSION }}" &>/dev/null; then
-            echo "Release ${{ env.OPENLIST_VERSION }} 已存在，跳过创建"
-            exit 0
-          fi
-          
-          # 创建 Release notes 文件
-          echo "Synced with OpenList official release v${{ env.OPENLIST_VERSION }}" > release_notes.txt
+          set -e
+          V="${{ env.OPENLIST_VERSION }}"
+          BASE="openlist-magisk-$V"
+          FILES="$BASE-arm64.zip $BASE-arm.zip $BASE-amd64.zip $BASE-386.zip update-arm64.json update-arm.json update-amd64.json update-386.json"
+
+          echo "Synced with OpenList official release $V" > release_notes.txt
+          echo "" >> release_notes.txt
+          echo "按设备架构选一个包：arm64 / arm / amd64 / 386。" >> release_notes.txt
+          echo "纯在线包（不含二进制）见 online 通道的 Release。" >> release_notes.txt
           echo "" >> release_notes.txt
           echo "${{ env.OPENLIST_CHANGELOG }}" >> release_notes.txt
-          
-          # 创建 Release
-          gh release create "${{ env.OPENLIST_VERSION }}" \
-            --title "OpenList Magisk Module ${{ env.OPENLIST_VERSION }}" \
-            --notes-file release_notes.txt \
-            --draft=false \
-            --prerelease=false \
-            "openlist-magisk-${{ env.OPENLIST_VERSION }}.zip"
-          
-          echo "Release ${{ env.OPENLIST_VERSION }} 创建成功"
-          
-          # 清理临时文件
-          rm -f release_notes.txt
 
-      # 清理临时文件
+          if gh release view "$V" &>/dev/null; then
+            # Release 可能是 online.yml 先建的（只有 online.zip），这里补架构资产与上游日志
+            echo "Release $V 已存在，补上传架构包"
+            gh release upload "$V" $FILES --clobber
+
+            BODY=$(gh release view "$V" --json body -q '.body' 2>/dev/null || true)
+            if ! printf '%s' "$BODY" | grep -q 'upstream-sync'; then
+              {
+                printf '%s\n\n' "$BODY"
+                echo '<!-- upstream-sync -->'
+                echo "---"
+                echo ""
+                echo "Synced with OpenList official release $V"
+                echo ""
+                echo "${{ env.OPENLIST_CHANGELOG }}"
+              } > merged_notes.txt
+              gh release edit "$V" --notes-file merged_notes.txt
+            fi
+          else
+            gh release create "$V" \
+              --title "OpenList Magisk Module $V" \
+              --notes-file release_notes.txt \
+              --draft=false \
+              --prerelease=false \
+              $FILES
+          fi
+
+          # 校验：四份清单必须都在 Release 里，缺一条对应架构就查不到更新
+          ASSETS=$(gh release view "$V" --json assets -q '.assets[].name')
+          for f in update-arm64.json update-arm.json update-amd64.json update-386.json; do
+            echo "$ASSETS" | grep -qx "$f" || { echo "::error::Release 缺少 $f"; exit 1; }
+          done
+          echo "Release $V 资产校验通过"
+
       - name: 清理临时文件
         if: always()
         run: |
-          rm -rf openlist-magisk-*.zip latest_release.json release_notes.txt
+          rm -rf .pkg openlist-magisk-*.zip openlist-arm openlist-arm64 openlist-amd64 openlist-386 \
+                 latest_release.json release_notes.txt merged_notes.txt

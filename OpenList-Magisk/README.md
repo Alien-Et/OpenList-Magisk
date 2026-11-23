@@ -29,14 +29,38 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 
 ## 系统要求
 
-- Android 设备（支持 ARM 或 ARM64 架构）
+- Android 设备（arm / arm64 / x86 / x86_64 四种架构都支持）
 - Magisk v20.4 或更高版本，或 KernelSU，或 APatch
 - Root 权限
+
+## 安装包怎么选
+
+一共 5 个包，按架构挑一个，装完就跟着自己那条通道更新：
+
+| 包名 | 内含二进制 | 适合谁 |
+|---|---|---|
+| `openlist-magisk-vX-arm64.zip` | arm64 | **绝大多数手机，首选** |
+| `openlist-magisk-vX-arm.zip` | arm | 只有 arm32 的老设备 |
+| `openlist-magisk-vX-amd64.zip` | amd64 | x86_64 设备 |
+| `openlist-magisk-vX-386.zip` | 386 | x86 设备 |
+| `openlist-magisk-online.zip` | 无 | 想省流量，安装时现下（约 76 KB） |
+
+全部挂在同一个 `vX.Y.Z` Release 下：4 个架构包跟上游走，`online` 手动触发构建。
+
+包里没有对应架构的二进制时，安装脚本会自动在线下载，不会装失败。
+
+## 二进制获取顺序
+
+1. 包内 `$MODROOT/openlist-<arch>`
+2. `/sdcard/Download/openlist-android-<arch>.tar.gz`（提前放好可离线装）
+3. 在线下载（直连 + 国内镜像，带 md5 校验，版本与模块版本严格一致）
+4. 全失败 → 中止并打印手动下载地址
 
 ## 安装步骤
 
 1. **下载模块**
-   - 从 [GitHub Releases](https://github.com/Alien-Et/OpenList-Magisk/releases) 下载最新版本
+   - 从 [GitHub Releases](https://github.com/Alien-Et/OpenList-Magisk/releases) 挑一个包（见上表）
+   - ARM64 设备拿 `openlist-magisk-vX-arm64.zip`；不确定架构用 `openlist-magisk-online.zip`（约 76 KB，安装时自动识别并下载）
 
 2. **安装配置**
    - 打开 Magisk 管理器、KernelSU 管理器 或 APatch 管理器
@@ -45,6 +69,7 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
      - 选择二进制文件安装位置
      - 选择数据目录存储位置
      - 更新安装时如果检测到旧数据，会多问一句要不要一起迁过来
+   - 包里没有对应架构的二进制时会自动在线下载，装的时候别断网
 
 3. **完成安装**
    - 等待安装完成
@@ -141,6 +166,8 @@ WebUI 里点更新走的是 `update-bg`（后台跑）+ `update-status`（轮询
 - 修复 WebUI 管理员账号密码框输不进字（改用文字遮罩，不再用 `type=password`）
 - 修复「立即更新」只显示一句「更新失败」：更新改为后台执行 + 轮询，失败会带具体原因
 - 新增安装包内随附 `LICENSE`（MIT）、`LICENSE-AGPL-3.0.txt`（AGPL-3.0 全文）与 `THIRD-PARTY.md`，README 顶部补许可提示
+- 重构 产物拆成 5 个：4 个单架构包（arm64 / arm / amd64 / 386，各带自己的 `updateJson`）+ 1 个不含二进制的 `online.zip`（约 76 KB）
+- 新增 安装时四级回退取二进制：包内 → Download 目录 → 在线下载（复用 `control.sh` 的镜像列表与 md5 校验）→ 中止并给手动指引；下载的二进制版本与模块版本严格对齐
 
 > 本次更新只测试到「WebUI 能正常用」这一步，没有做完整回归，可能还有没挖出来的隐藏 bug。遇到问题请到仓库提 issue。
 

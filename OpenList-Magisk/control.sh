@@ -17,6 +17,7 @@
 #   control.sh passwd <base64(新密码)>
 #   control.sh migrate-data <base64(新目录)>
 #   control.sh migrate-bin  <base64(新路径)>
+#   control.sh fetch-bin <arm64|arm|amd64|386> [vX.Y.Z]   # 安装期用：包内没有二进制时在线取
 #   control.sh version
 #
 # 输出统一为 key=value，一行一个；结束行 result=ok / result=fail
@@ -258,6 +259,12 @@ probe_mirrors() {
 # 按实测延迟从快到慢（只含可达的）；缓存 30 分钟，过期自动重测
 mirror_ranking() {
     local now ts
+    # 安装期取二进制不做测速：15 个镜像并发探测要 8 秒，
+    # 安装界面停在那儿不动比慢一点更难受，直接按内置顺序试
+    if [ "${NO_RANK:-0}" = "1" ]; then
+        printf '%s\n' $MIRRORS
+        return 0
+    fi
     now="$(date +%s 2>/dev/null || echo 0)"
     if [ -f "$MIRROR_RANK" ]; then
         ts="$(sed -n 's/^ts=//p' "$MIRROR_RANK" 2>/dev/null | head -n 1)"
@@ -973,6 +980,76 @@ cmd_update() {
     fi
 }
 
+# ---------- 安装期取二进制 ----------
+# customize.sh 在包内没找到对应架构的二进制时调用这里。
+# 走 releases/latest/download/ 固定路径：不需要 GitHub API，不消耗额度，也不需要 token。
+# 输出：ok=1 / path=<下载到的文件>，失败时 ok=0 并附 error。
+cmd_fetch_bin() {
+    local arch="${1:-}" ver="${2:-}" asset work url md5url want got rc=0
+    case "$arch" in
+        arm64|arm|amd64|386) ;;
+        *) kv ok 0; kv error "未知架构：${arch:-空}"; kv result fail; return 0 ;;
+    esac
+    asset="openlist-android-$arch.tar.gz"
+
+    # 版本没指定就用 latest；固定路径对镜像同样有效
+    case "$ver" in
+        v[0-9]*) url="$GH_DL/releases/download/$ver/$asset"
+                 md5url="$GH_DL/releases/download/$ver/md5-android.txt" ;;
+        *)       url="$GH_DL/releases/latest/download/$asset"
+                 md5url="$GH_DL/releases/latest/download/md5-android.txt" ;;
+    esac
+
+    work="$TMP_DIR/.openlist_fetch.$$"
+    rm -rf "$work" 2>/dev/null
+    mkdir -p "$work" 2>/dev/null || { kv ok 0; kv error "无法创建临时目录 $work"; kv result fail; return 0; }
+
+    # 安装期不做镜像测速（NO_RANK=1），按内置顺序逐个试，第一个成功就停
+    NO_RANK=1
+    export NO_RANK
+    if ! http_download "$url" "$work/$asset"; then
+        rm -rf "$work" 2>/dev/null
+        kv ok 0
+        kv asset "$asset"
+        kv error "下载失败（直连与镜像均不可用）"
+        kv result fail
+        return 0
+    fi
+
+    # md5 校验：上游 md5-android.txt 里有对应行才校验，缺失不阻断
+    if http_download "$md5url" "$work/md5.txt" 2>/dev/null; then
+        want="$(awk -v f="$asset" '{n=$2; sub(/^\.\//,"",n); if (n==f) {print $1; exit}}' "$work/md5.txt" 2>/dev/null)"
+        if [ -n "$want" ]; then
+            got="$(md5sum "$work/$asset" 2>/dev/null | awk '{print $1}')"
+            if [ "$got" != "$want" ]; then
+                rm -rf "$work" 2>/dev/null
+                kv ok 0
+                kv asset "$asset"
+                kv error "md5 校验失败（期望 $want，实际 ${got:-空}）"
+                kv result fail
+                return 0
+            fi
+            kv md5_ok 1
+        fi
+    fi
+
+    tar -xzf "$work/$asset" -C "$work" 2>/dev/null || {
+        rm -rf "$work" 2>/dev/null
+        kv ok 0; kv asset "$asset"; kv error "解压失败"; kv result fail; return 0
+    }
+    [ -f "$work/openlist" ] || {
+        rm -rf "$work" 2>/dev/null
+        kv ok 0; kv asset "$asset"; kv error "压缩包内未找到 openlist"; kv result fail; return 0
+    }
+
+    # 留在临时目录给 customize.sh 搬走，不在这里决定落点
+    chmod 755 "$work/openlist" 2>/dev/null
+    kv ok 1
+    kv asset "$asset"
+    kv path "$work/openlist"
+    kv result ok
+}
+
 cmd_logs() {
     local n="${1:-120}" which="${2:-service}" f
     case "$which" in
@@ -1499,6 +1576,7 @@ case "$cmd" in
     update) cmd_update "$@" ;;
     update-bg) cmd_update_bg "$@" ;;
     update-status) cmd_update_status ;;
+    fetch-bin) cmd_fetch_bin "$@" ;;
     logs) cmd_logs "$@" ;;
     config-get) cmd_config_get ;;
     config-save) cmd_config_save "$@" ;;
@@ -1518,7 +1596,7 @@ case "$cmd" in
         kv result ok
         ;;
     *)
-        echo "usage: control.sh {status|start|stop|restart|check|versions|update|logs|config-get|config-save|passwd|token|api|migrate-data|migrate-bin|fix-paths|scan|clean-bins|delete-data|use-data|version}"
+        echo "usage: control.sh {status|start|stop|restart|check|versions|update|logs|config-get|config-save|passwd|token|api|migrate-data|migrate-bin|fix-paths|scan|clean-bins|delete-data|use-data|fetch-bin|version}"
         exit 2
         ;;
 esac
