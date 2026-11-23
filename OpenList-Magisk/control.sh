@@ -382,7 +382,9 @@ cmd_versions() {
             rm -f "$f" "$list"
             fail "$msg"
         fi
-        n="$(grep -c '"tag_name"' "$f" 2>/dev/null)"
+        # 注意：API 返回是压缩成一行的 JSON，grep -c 只数行数（恒为 1），
+        # 必须数出现次数，否则永远不满 100、翻不到第二页
+        n="$(grep -o '"tag_name"' "$f" 2>/dev/null | wc -l | tr -d ' ')"
         n="${n:-0}"
         [ "$n" -gt 0 ] || break
         parse_releases < "$f" >> "$list" 2>/dev/null
@@ -406,9 +408,10 @@ cmd_versions() {
     } > "$RELEASES_CACHE.tmp" 2>/dev/null
     mv -f "$RELEASES_CACHE.tmp" "$RELEASES_CACHE" 2>/dev/null || true
     chmod 600 "$RELEASES_CACHE" 2>/dev/null || true
-    rm -f "$list" "$list.ok"
 
-    sed -n 's/^item=//p' "$RELEASES_CACHE"
+    # 回显本次抓到的列表，而不是再读缓存：缓存写失败也不影响本次结果
+    sed -n 's/^item=//p' "$list.ok"
+    rm -f "$list" "$list.ok"
     kv result ok
 }
 
@@ -796,17 +799,19 @@ cmd_passwd() { # b64pass [b64user]
 # ---------- 迁移 ----------
 # 安装期专用：只把数据从旧目录搬到新目录，不碰 service.sh、不启停服务
 # 安装时 service.sh 还是模板占位符，重启服务也无从谈起，所以单独一条路径
-# 用法: migrate-core <b64旧目录> <b64新目录> [b64旧二进制路径]
+# 用法: migrate-core <b64旧目录> <b64新目录>
 # 输出: stage=/detail= 进度（供安装器轮询），结束给 source_removed / result
 cmd_migrate_core() {
-    local b64old="${1:-}" b64new="${2:-}" b64bin="${3:-}" old new oldbin="" extra need avail a b before=0 f
+    local b64old="${1:-}" b64new="${2:-}" old new extra need avail a b before=0 f
     [ -n "$b64old" ] || fail "缺少源目录"
     [ -n "$b64new" ] || fail "缺少目标目录"
     old="$(printf '%s' "$b64old" | base64 -d 2>/dev/null)"
     new="$(printf '%s' "$b64new" | base64 -d 2>/dev/null)"
     [ -n "$old" ] && [ -n "$new" ] || fail "目录解析失败"
-    if [ -n "$b64bin" ]; then
-        oldbin="$(printf '%s' "$b64bin" | base64 -d 2>/dev/null)"
+    # 服务正在用这个目录时不能搬：SQLite 可能写到一半，复制出来是坏库
+    # 用行首锚定，避免把"命令行里只是提到这个路径"的 shell/编辑器也算进来
+    if have pgrep && pgrep -f "^[^ ]*openlist server --data $old" >/dev/null 2>&1; then
+        fail "有进程正在使用该目录（openlist server --data $old），请先停止服务"
     fi
     [ -d "$old" ] || fail "源目录不存在：$old"
     [ -f "$old/data.db" ] || fail "源目录里没有 data.db：$old"
@@ -817,6 +822,7 @@ cmd_migrate_core() {
     [ "$new" = "$old" ] && fail "源和目标相同"
     case "$new" in "$old"/*) fail "目标不能是源目录的子目录" ;; esac
     case "$old" in "$new"/*) fail "目标不能是源目录的父目录" ;; esac
+    case "$MODDIR" in "$old"|"$old"/*) fail "源目录包含模块目录（$old），拒绝删除" ;; esac
     if [ -d "$new" ]; then
         extra="$(ls -A "$new" 2>/dev/null | grep -vx 'bin' | head -n 1)"
         [ -n "$extra" ] && fail "目标目录非空（含 $extra），请先清理"
@@ -856,17 +862,14 @@ cmd_migrate_core() {
         [ -n "$a" ] && [ "$a" = "$b" ] || fail "data.db 校验失败"
     fi
 
-    # 二进制若住在旧目录里，先搬出来再删源；放在校验之后，失败时旧模块仍可用
-    if [ -n "$oldbin" ] && [ -f "$oldbin" ]; then
-        case "$oldbin" in
-            "$old"/*)
-                progress move "搬移二进制到模块 bin"
-                mkdir -p "$MODDIR/bin" 2>/dev/null || fail "无法创建 $MODDIR/bin"
-                mv -f "$oldbin" "$MODDIR/bin/openlist" 2>/dev/null || fail "二进制搬移失败：$oldbin"
-                chmod 755 "$MODDIR/bin/openlist" 2>/dev/null || true
-                kv bin_moved "$MODDIR/bin/openlist"
-                ;;
-        esac
+    # config.json 里是绝对路径（temp_dir / database.db_file / bleve_dir / log.name），
+    # 不改写的话，删掉旧目录后 OpenList 会往不存在的路径写，看起来就像数据丢了
+    if [ -f "$new/config.json" ]; then
+        progress verify "改写 config.json 路径"
+        old_esc="$(sed_pattern_escape "$old")"
+        new_esc="$(sed_escape "$new")"
+        sed -i "s|\"$old_esc|\"$new_esc|g" "$new/config.json" 2>/dev/null || true
+        kv config_updated 1
     fi
 
     progress clean "删除旧目录 $old"
