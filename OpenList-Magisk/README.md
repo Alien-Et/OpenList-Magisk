@@ -76,9 +76,11 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 sh /data/adb/modules/openlist/control.sh status
 sh /data/adb/modules/openlist/control.sh start|stop|restart
 sh /data/adb/modules/openlist/control.sh check
-sh /data/adb/modules/openlist/control.sh update [--force] [--proxy URL]
+sh /data/adb/modules/openlist/control.sh update --force          # 更新二进制
+sh /data/adb/modules/openlist/control.sh update --tag v4.2.9    # 回退到指定版本（不查 API）
 sh /data/adb/modules/openlist/control.sh logs 200
 sh /data/adb/modules/openlist/control.sh config-get
+sh /data/adb/modules/openlist/control.sh mirror-rank            # 看镜像实测排序
 ```
 
 `update` 先试直连，再按实测延迟顺序试国内镜像；镜像偏好（自动 / 直连 / 指定）在 WebUI 里选，存到 `<数据目录>/mirror.conf`。

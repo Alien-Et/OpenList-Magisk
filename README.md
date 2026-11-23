@@ -7,21 +7,31 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 ## 功能亮点
 
-- **多框架支持**：同时兼容 Magisk、KernelSU 和 APatch
-- **灵活安装选项**：支持三种安装位置
-  - data/adb/openlist
-  - 模块目录/bin
-  - system/bin
-- **数据目录可选**：支持两种数据存储位置
-  - /data/adb/openlist/
-  - /storage/emulated/0/Android/openlist/
-- **账号初始化**：首次打开网页按向导设置管理员账号
-- **动态服务管理**：通过 Magisk/KernelSU 的"动作"按钮一键控制服务
-- **WebUI 控制台**（KernelSU / APatch）：状态、启停、在线更新、改配置、改账号、存储与任务、迁移目录、路径自检
-- **命令行控制**：`control.sh` 三家通用
-- **界面**：毛玻璃 + 大圆角，自动/浅色/深色主题
-- **智能网络适配**：自动识别 WiFi 和移动网络 IP
-- **日志支持**：详细的运行日志记录
+**安装**
+
+- 三种二进制位置：`/data/adb/OpenList/bin`、模块 `bin/`、模块 `system/bin`
+- 两种数据目录：`/data/adb/OpenList`、`/sdcard/Android/OpenList`
+- 更新安装时如果换了数据目录，可以顺手把旧数据迁过来（音量+ 迁移 / 音量- 跳过，默认跳过）
+- 管理员账号交给网页向导创建，安装脚本不碰密码
+
+**运行**
+
+- 三家框架通用：Magisk / KernelSU / APatch，同一份 `control.sh`
+- 开机自启：先等 `sys.boot_completed`，再等外部存储可写，`/sdcard` 挂载慢的机器也不会失败
+- 自动识别访问地址：优先取默认路由的 `src`，避开 `172.16–31` 这类虚拟网卡
+
+**WebUI（KernelSU / APatch）**
+
+- 状态、启停、重启、打开网页
+- 路径体检：列出所有二进制与数据目录，清理多余副本、切换、删除
+- 所有版本：官方 Release 全列表，任意版本升级或回退
+- 在线更新：可选下载镜像、显示下载进度、启动失败自动回滚
+- 下载配置、管理员账号、存储、离线任务、日志、迁移
+- 毛玻璃 + 大圆角，自动 / 浅色 / 深色主题
+
+**命令行**
+
+- `control.sh` 覆盖全部功能，Magisk 用户在终端直接调
 
 ## 截图展示
 
@@ -31,37 +41,19 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 ## 系统要求
 
-- Android 设备（支持 ARM 或 ARM64 架构）
-- Magisk v20.4 或更高版本，或 KernelSU
+- Android 设备，ARM 或 ARM64（x86 会直接中止安装）
+- Magisk v20.4 以上、KernelSU 或 APatch，任选其一
 - Root 权限
 
 ## 框架兼容性
 
-本模块同时支持 **Magisk**、**KernelSU** 和 **APatch** 三大 Android Root 框架：
+| 框架 | 模块系统 | 动作按钮 | 更新机制 | WebUI |
+|---|---|---|---|---|
+| Magisk | ✅ v20.4+ | ✅ | ✅ | ❌ 用「操作」按钮或终端 |
+| KernelSU | ✅ | ✅ | ✅ | ✅ |
+| APatch | ✅ | ✅ | ✅ | ✅ |
 
-### Magisk 支持
-- 支持 Magisk v20.4 及以上版本
-- 完全兼容 Magisk 模块系统
-- 支持 Magisk 动作按钮控制
-- 支持 Magisk 更新机制
-
-### KernelSU 支持  
-- 支持 KernelSU 最新版本
-- 完全兼容 KernelSU 模块系统
-- 支持 KernelSU 动作按钮控制
-- 支持 KernelSU 更新机制
-
-### APatch 支持
-- 支持 APatch 最新版本
-- 完全兼容 APatch 模块系统
-- 支持 APatch 动作按钮控制
-- 支持 APatch 更新机制
-
-### 通用特性
-- 自动检测运行环境（Magisk/KernelSU/APatch）
-- 统一的路径配置和处理
-- 兼容的卸载机制
-- 完整的日志记录系统
+三家跑的是同一份 `control.sh`，行为一致，只是入口不同。卸载脚本会从 `service.sh` 读真实路径，迁到自定义目录也能清干净。
 
 ## 安装步骤
 
@@ -83,11 +75,27 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 ## 使用说明
 
 ### 服务管理
-- 系统启动后自动运行
-- 通过 Magisk/KernelSU/APatch "动作"按钮控制服务
-- 服务状态显示在 module.prop：
-  - 运行中：显示访问地址和数据目录
-  - 已停止：显示启动提示
+
+- 开机自动启动：`late_start` 阶段先等 `sys.boot_completed`（最多 120 秒），数据目录在 `/sdcard` 或 `/storage` 时再等它可写（最多 180 秒），然后才拉起服务
+- 管理器里点「操作」按钮（`action.sh`）可手动启停
+- 状态写在 `module.prop` 的 description 里：运行时显示地址和 PID，停止时显示提示
+
+### WebUI 控制台
+
+| 区块 | 能做什么 |
+|---|---|
+| 状态 | 运行中/已停止、地址、PID；启停、重启、打开网页 |
+| 目录 | 模块目录、数据目录、二进制路径，点击复制 |
+| 路径体检 | 3 个二进制位置 + 2 个数据目录的占用；清理多余副本、切换数据目录、删除非当前目录 |
+| 所有版本 | 全部 Release（含历史），一键升级或回退 |
+| 版本与更新 | 检查更新、立即更新：后台下载、进度可见、起不来自动回滚 |
+| 下载镜像 | 自动选择 / 直连 / 15 个国内镜像 / 自定义；自动模式按实测延迟排序 |
+| 下载配置 | 端口、Token、目标路径、离线引擎、删除策略、预设路径 |
+| 管理员账号 | 改用户名、改密码（走管理 API，在线生效，不重启） |
+| 存储 | 列表、启用、禁用、全部重载 |
+| 离线任务 | 进行中任务、进度、取消 |
+| 迁移 | 数据目录 / 二进制点选迁移，迁移 = 移动（校验通过才删源） |
+| 日志 | 「服务日志 / 程序输出」两页 |
 
 ### 访问方式
 - Web 界面访问：`http://<设备IP>:5244`
@@ -95,10 +103,11 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - 完成向导前，WebUI 里存储、离线任务、设置会提示「还没有管理员账号」
 
 ### 数据存储
-- 默认数据目录：`/data/adb/openlist/`
-- 日志文件位置：与数据目录相同
-- **卸载不会删除数据**：卸载只清理二进制，数据目录会保留。确实要连数据一起删，卸载前执行
-  `touch /data/adb/modules/openlist/.delete_data_on_uninstall`，或卸载后手动 `rm -rf`。
+
+- 默认数据目录：`/data/adb/OpenList/`，日志是同目录下的 `service.log` 和 `openlist.log`
+- 下载镜像偏好存在 `<数据目录>/mirror.conf`，跟着数据目录走，模块更新不会丢
+- **卸载默认保留数据**：只清理二进制。确实要连数据一起删，卸载前执行
+  `touch /data/adb/modules/OpenList/.delete_data_on_uninstall`，或卸载后手动 `rm -rf`
 
 ## 故障排除
 
@@ -119,15 +128,33 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
    - 确认数据目录可写
    - 查看详细日志
 
+4. **检查更新没反应 / 更新失败**
+   - 提示「GitHub 不可达，显示的是缓存版本」属于正常降级，版本列表来自上次缓存
+   - 更新失败现在会带原因（`error=` 或退出码），日志页看 `service.log`
+   - 国内直连 `api.github.com` 经常不通，可把 PAT 写进模块目录 `.github_token`（额度 60 → 5000 次/小时）
+   - 下载走镜像：「下载镜像」里选「自动选择」，或指定某个镜像
+
+5. **重启后没有自动启动**
+   - 看 `/data/adb/modules/OpenList/service.log` 最后几行
+   - 卡在「等待外部存储就绪」是 `/sdcard` 挂载慢，最多等 180 秒，不用管
+   - 手动跑一次确认二进制的数据目录没问题：`su -c /data/adb/modules/OpenList/service.sh`
+
+6. **WebUI 打不开**
+   - Magisk 没有 WebUI 机制，只能用「操作」按钮或终端 `control.sh`
+   - KernelSU / APatch 在模块卡片里点 WebUI
+
 ### 手动操作
 - 停止服务：`su -c pkill -f openlist`
 - 启动服务：`su -c /data/adb/modules/openlist/service.sh`
 - 查看日志：`cat /data/adb/modules/openlist/service.log`
 
 ## 更新说明
-- 支持通过 Magisk/KernelSU/APatch 更新检查
-- 更新不会清除现有数据
-- 可在安装时重新选择配置选项
+
+- 管理器里的模块更新看 `update.json`，`versionCode` 变大才会提示
+- 模块更新只替换模块文件，不动数据目录
+- WebUI 里的「立即更新」是给二进制用的：后台下载、显示进度、起不来自动回滚
+- 版本列表只走 GitHub 官方 API；不通时用上次缓存并标注「离线缓存」
+- 二进制下载可走国内镜像，自动模式按实测延迟从快到慢排
 
 ## 更新日志
 
