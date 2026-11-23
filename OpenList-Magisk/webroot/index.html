@@ -84,6 +84,23 @@
   <div class="warnbox" id="updateWarn" style="display:none"></div>
 </div>
 
+<!-- 下载镜像 -->
+<h2>下载镜像</h2>
+<div class="card">
+  <label>镜像选择</label>
+  <div class="select" id="mirrorSelect" data-value="auto">
+    <button type="button" class="select-btn">自动选择</button>
+    <div class="select-menu" id="mirrorMenu" hidden></div>
+  </div>
+  <label>自定义镜像</label>
+  <input id="mirrorCustom" placeholder="https://your-mirror.example/" autocomplete="off">
+  <div class="btns">
+    <button class="ghost" id="mirrorPing">测速</button>
+    <button id="mirrorSave">保存镜像设置</button>
+  </div>
+  <div class="hint">镜像只用于下载二进制（github.com 资源）；版本列表走 api.github.com，国内需要代理。下拉栏里的延迟由「测速」实测。</div>
+</div>
+
 <!-- 下载配置 -->
 <h2>下载配置</h2>
 <div class="card">

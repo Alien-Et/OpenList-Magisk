@@ -201,6 +201,10 @@ select optgroup{
 }
 .select-menu button:active{transform:none}
 .select-menu button.active{background:var(--primary-soft);color:var(--primary)}
+/* 镜像下拉：左边名字，右边延迟 */
+.select-menu button{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mlat{flex:none;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums}
 
 /* 预设路径胶囊 */
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 8px}

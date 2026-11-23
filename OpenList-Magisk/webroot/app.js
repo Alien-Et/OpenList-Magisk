@@ -734,6 +734,133 @@
     });
   }
 
+  /* ---------- 下载镜像 ---------- */
+  var mirrorList = '';
+  var mirrorLat = {};
+  var MIRROR_SHORT = { auto: '自动选择', direct: '直连', custom: '自定义' };
+
+  function mirrorHost(u) {
+    return String(u).replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  }
+
+  function renderMirrorMenu() {
+    var menu = $('mirrorMenu');
+    var sel = $('mirrorSelect');
+    if (!menu || !sel) return;
+    var cur = sel.dataset.value;
+    menu.textContent = '';
+    var rows = [
+      { v: 'auto', t: '自动选择（直连 → 镜像依次尝试）', s: '自动选择' },
+      { v: 'direct', t: '直连（不用镜像）', s: '直连' }
+    ];
+    (mirrorList || '').split(/\s+/).forEach(function (u) {
+      if (u) rows.push({ v: u, t: mirrorHost(u), s: mirrorHost(u) });
+    });
+    rows.push({ v: 'custom', t: '自定义…', s: '自定义' });
+    rows.forEach(function (r) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.value = r.v;
+      b.dataset.short = r.s;
+      if (r.v === cur) b.className = 'active';
+      var n = document.createElement('span');
+      n.className = 'mname';
+      n.textContent = r.t;
+      b.appendChild(n);
+      if (r.v.indexOf('http') === 0) {
+        var lat = document.createElement('span');
+        lat.className = 'mlat';
+        lat.textContent = mirrorLat[r.v] || '未测';
+        b.appendChild(lat);
+      }
+      b.onclick = function (e) {
+        e.stopPropagation();
+        sel.dataset.value = r.v;
+        sel.querySelector('.select-btn').textContent = r.s;
+        menu.hidden = true;
+        renderMirrorMenu();
+        updateMirrorCustom();
+      };
+      menu.appendChild(b);
+    });
+  }
+
+  function updateMirrorCustom() {
+    var sel = $('mirrorSelect');
+    var inp = $('mirrorCustom');
+    if (!sel || !inp) return;
+    inp.disabled = sel.dataset.value !== 'custom';
+  }
+
+  function loadMirror() {
+    return ctl('mirror-get', 20000).then(function (r) {
+      if (r.kv.result !== 'ok') return;
+      if (r.kv.list) mirrorList = r.kv.list;
+      var mode = r.kv.mode || 'auto';
+      var url = r.kv.url || '';
+      var sel = $('mirrorSelect');
+      if (!sel) return;
+      // 保存的镜像不在下拉列表里（用户手填的）→ 选中「自定义…」并把地址填回去
+      var inList = (mirrorList || '').split(/\s+/).indexOf(url) >= 0;
+      if (mode === 'custom') sel.dataset.value = inList ? url : 'custom';
+      else sel.dataset.value = mode;
+      var short = MIRROR_SHORT[mode] || '自动选择';
+      if (mode === 'custom' && url) short = mirrorHost(url);
+      sel.querySelector('.select-btn').textContent = short;
+      if (mode === 'custom' && url) $('mirrorCustom').value = url;
+      renderMirrorMenu();
+      updateMirrorCustom();
+    }).catch(function () {});
+  }
+
+  function pingMirrors() {
+    var b = $('mirrorPing');
+    if (b) { b.disabled = true; b.textContent = '测速中…'; }
+    return ctl('mirror-ping', 60000).then(function (r) {
+      (r.raw.stdout || '').split('\n').forEach(function (l) {
+        if (l.indexOf('item=') !== 0) return;
+        var p = l.slice(5).split('|');
+        var url = p[0], ms = p[1], code = p[2];
+        if (!url) return;
+        if (ms) mirrorLat[url] = ms + ' ms';
+        else if (code === 'nocurl') mirrorLat[url] = '不支持';
+        else mirrorLat[url] = (code === '000' ? '超时' : '✗ ' + code);
+      });
+      renderMirrorMenu();
+    }).catch(function (e) {
+      toast('测速失败: ' + e, true);
+    }).finally(function () {
+      if (b) { b.disabled = !hasKsu; b.textContent = '测速'; }
+    });
+  }
+
+  function saveMirror() {
+    var sel = $('mirrorSelect');
+    var v = (sel && sel.dataset.value) || 'auto';
+    var mode = 'auto';
+    var url = '';
+    if (v === 'auto' || v === 'direct') {
+      mode = v;
+    } else if (v === 'custom') {
+      mode = 'custom';
+      url = ($('mirrorCustom').value || '').trim();
+    } else {
+      mode = 'custom';
+      url = v;
+    }
+    if (mode === 'custom' && !url) return toast('请先选择镜像或填写自定义地址', true);
+    var b = $('mirrorSave');
+    b.disabled = true;
+    ctl("mirror-set '" + b64utf8(mode + '|' + url) + "'", 20000).then(function (r) {
+      if (r.kv.result === 'ok') {
+        toast('已保存：' + (r.kv.mode === 'custom' ? mirrorHost(r.kv.url) : (r.kv.mode === 'auto' ? '自动选择' : '直连')));
+      } else {
+        toast(r.kv.error || '保存失败', true);
+      }
+      return loadMirror();
+    }).finally(function () { b.disabled = !hasKsu; });
+  }
+
   /* ---------- 所有版本（含回退） ---------- */
   var VER_CACHE_KEY = 'ol_versions_v1';
   var verRows = null;
@@ -1167,6 +1294,8 @@
     applyTheme();
     initSelects();
     initPresets();
+    renderMirrorMenu();
+    updateMirrorCustom();
 
     document.querySelectorAll('#logTabs .chip-btn').forEach(function (b) {
       b.onclick = function () {
@@ -1177,7 +1306,7 @@
       };
     });
     $('modeChip').textContent = hasKsu ? 'KernelSU / APatch' : '无 root 接口';
-    ['toggleBtn', 'restartBtn', 'checkBtn', 'updateBtn', 'saveCfgBtn', 'pwdBtn', 'migrateDataBtn', 'migrateBinBtn', 'fixPathsBtn']
+    ['toggleBtn', 'restartBtn', 'checkBtn', 'updateBtn', 'saveCfgBtn', 'pwdBtn', 'migrateDataBtn', 'migrateBinBtn', 'fixPathsBtn', 'mirrorSave', 'mirrorPing']
       .forEach(function (id) { $(id).disabled = true; });
 
     if (!hasKsu) {
@@ -1198,6 +1327,8 @@
     $('migrateDataBtn').disabled = false;
     $('migrateBinBtn').disabled = false;
     $('fixPathsBtn').disabled = false;
+    $('mirrorSave').disabled = false;
+    $('mirrorPing').disabled = false;
 
     $('toggleBtn').onclick = toggleService;
     $('restartBtn').onclick = restart;
@@ -1210,6 +1341,8 @@
     $('migrateDataBtn').onclick = migrateData;
     $('migrateBinBtn').onclick = migrateBin;
     $('fixPathsBtn').onclick = fixPaths;
+    $('mirrorSave').onclick = saveMirror;
+    $('mirrorPing').onclick = pingMirrors;
     $('logRefresh').onclick = loadLog;
     $('logClear').onclick = clearLog;
     $('storageRefresh').onclick = loadStorages;
@@ -1233,6 +1366,7 @@
     loadLog();
     loadStorages();
     loadTasks();
+    loadMirror().then(pingMirrors);
   }
 
   if (document.readyState === 'loading') {

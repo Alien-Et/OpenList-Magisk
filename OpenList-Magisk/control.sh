@@ -9,6 +9,7 @@
 #   control.sh check
 #   control.sh versions
 #   control.sh migrate-core <base64旧目录> <base64新目录>   # 安装期用
+#   control.sh mirror-get | mirror-set <base64模式|地址> | mirror-ping
 #   control.sh update [--force] [--asset NAME] [--proxy URL] [--tag vX.Y.Z]
 #   control.sh logs [行数]
 #   control.sh config-get
@@ -46,9 +47,31 @@ GH_TOKEN="${GH_TOKEN:-}"
 if [ -z "$GH_TOKEN" ] && [ -f "$GH_TOKEN_FILE" ]; then
     GH_TOKEN="$(sed -n '1p' "$GH_TOKEN_FILE" 2>/dev/null | tr -d '\r\n ')"
 fi
-# 下载二进制仍可用代理（代理只拼 github.com 资源）
+# 下载二进制走 github.com 资源镜像（实测这批对 releases/download 可用，延迟由 mirror-ping 测）
 GH_PROXY="${GH_PROXY:-}"
-PROXIES="https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/"
+MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://cdn.gh-proxy.com/ https://gh-proxy.org/ https://ghproxy.cn/ https://slink.ltd/ https://gh.monlor.com/ https://gh.con.sh/ https://ghproxy.cfd/ https://ghproxy.imciel.com/ https://ghp.keleyaa.com/ https://gh.7-s.cn/ https://gh-proxy.net/ https://ghproxy.net/ https://gh.ddlc.top/"
+# auto 模式的尝试顺序：只放实测稳定且快的几个，避免每次下载先耗在超时上
+PROXIES="https://ghfast.top/ https://gh-proxy.com/ https://cdn.gh-proxy.com/ https://gh-proxy.org/ https://ghproxy.cn/ https://slink.ltd/ https://gh.monlor.com/"
+# 测速探针：仓库里的 README（不绑某个 release，各镜像都转发 /raw/）
+PROBE_URL="$GH_DL/releases/latest/download/md5-android.txt"
+
+# 镜像偏好：auto（直连→镜像依次尝试）/ direct（只直连）/ custom（指定镜像优先，再退回内置列表）
+# 配置文件放数据目录，不放模块目录：模块更新会整体替换模块目录
+MIRROR_MODE="auto"
+MIRROR_URL=""
+MIRROR_CONF=""
+
+# http_download 依次尝试的镜像前缀
+download_proxies() {
+    case "$MIRROR_MODE" in
+        direct) ;;
+        custom)
+            [ -n "$MIRROR_URL" ] && printf '%s\n' "$MIRROR_URL"
+            printf '%s\n' $MIRRORS
+            ;;
+        *) printf '%s\n' $MIRRORS ;;
+    esac
+}
 
 # ---------- 基础 ----------
 kv() { echo "$1=$2"; }
@@ -83,6 +106,15 @@ DATA_DIR="$(expand_moddir "$(get_var DATA_DIR)")"
 OPENLIST_BINARY="$(expand_moddir "$(get_var OPENLIST_BINARY)")"
 [ -n "$DATA_DIR" ] || DATA_DIR="/data/adb/openlist"
 [ -n "$OPENLIST_BINARY" ] || OPENLIST_BINARY="$MODDIR/bin/openlist"
+
+# 读取用户选的下载镜像（安装在数据目录里，跟随数据迁移）
+MIRROR_CONF="$DATA_DIR/mirror.conf"
+if [ -f "$MIRROR_CONF" ]; then
+    _mm="$(sed -n 's/^mode=//p' "$MIRROR_CONF" 2>/dev/null | head -n 1)"
+    _mu="$(sed -n 's/^url=//p' "$MIRROR_CONF" 2>/dev/null | head -n 1)"
+    case "$_mm" in auto|direct|custom) MIRROR_MODE="$_mm" ;; esac
+    [ -n "$_mu" ] && MIRROR_URL="$_mu"
+fi
 
 # ---------- token / API ----------
 TOKEN_CACHE="${TOKEN_CACHE:-/data/local/tmp/openlist_token.cache}"
@@ -184,6 +216,102 @@ cache_latest_tag() {
     sed -n 's/^item=//p' "$RELEASES_CACHE" 2>/dev/null | head -n 1 | cut -d'|' -f1
 }
 
+# ---------- 下载镜像偏好 ----------
+cmd_mirror_get() {
+    kv mode "$MIRROR_MODE"
+    kv url "$MIRROR_URL"
+    kv list "$MIRRORS"
+    kv result ok
+}
+
+# 参数：base64("<mode>|<url>")，mode = auto / direct / custom
+cmd_mirror_set() {
+    local b64="${1:-}" val mode url _host
+    [ -n "$b64" ] || fail "缺少参数"
+    val="$(echo "$b64" | base64 -d 2>/dev/null)"
+    mode="${val%%|*}"
+    url="${val#*|}"
+    case "$mode" in
+        auto|direct)
+            url=""
+            ;;
+        custom)
+            case "$url" in
+                "") fail "请填写镜像地址" ;;
+                http://*|https://*) ;;
+                *) url="https://$url" ;;
+            esac
+            case "$url" in */) ;; *) url="$url/" ;; esac
+            case "$url" in
+                *" "*|*"|"*|*"\\"*|*"<"*|*">"*|*"\""*|*"["*|*"]"*) fail "地址不合法" ;;
+                http://*/|https://*/) ;;
+                *) fail "地址不合法（应形如 https://mirror.example/）" ;;
+            esac
+            # 域名部分必须是 host.domain 形式，挡掉 http://[bad 这类垃圾输入
+            _host="${url#*://}"
+            _host="${_host%%/*}"
+            case "$_host" in
+                *.*) ;;
+                *) fail "地址不合法（域名缺少点号）" ;;
+            esac
+            case "$_host" in
+                *[!A-Za-z0-9.-]*) fail "地址不合法（域名含非法字符）" ;;
+            esac
+            ;;
+        *) fail "模式不合法" ;;
+    esac
+    mkdir -p "$(dirname "$MIRROR_CONF")" 2>/dev/null || true
+    {
+        echo "mode=$mode"
+        echo "url=$url"
+    } > "$MIRROR_CONF.tmp" 2>/dev/null || fail "写入失败"
+    mv -f "$MIRROR_CONF.tmp" "$MIRROR_CONF" 2>/dev/null || fail "写入失败"
+    chmod 600 "$MIRROR_CONF" 2>/dev/null || true
+    MIRROR_MODE="$mode"
+    MIRROR_URL="$url"
+    kv mode "$mode"
+    kv url "$url"
+    kv result ok
+}
+
+# 并发测各镜像延迟：拉 release 里的小文件（几百字节），输出 item=<url>|<ms>|<code>
+cmd_mirror_ping() {
+    local d i=0 p r code ms
+    d="$TMP_DIR/.mirror_ping.$$"
+    rm -rf "$d" 2>/dev/null
+    mkdir -p "$d" 2>/dev/null || fail "无法创建临时目录"
+    if have curl; then
+        for p in $MIRRORS; do
+            i=$((i + 1))
+            ( r="$(curl -sL -r 0-512 -o /dev/null -m 8 -w '%{http_code} %{time_total}' "${p}${PROBE_URL}" 2>/dev/null)"
+              printf '%s' "$r" > "$d/$i" 2>/dev/null ) &
+        done
+        wait
+        i=0
+        for p in $MIRRORS; do
+            i=$((i + 1))
+            code=""
+            ms=""
+            if [ -f "$d/$i" ]; then
+                read -r code ms < "$d/$i" 2>/dev/null
+            fi
+            case "$code" in
+                200|206) ms="$(awk -v t="${ms:-0}" 'BEGIN{printf "%d", t * 1000}')" ;;
+                # 3xx 说明镜像本身响应正常，只是多跳一次，也算可达
+                301|302|303|307|308) ms="$(awk -v t="${ms:-0}" 'BEGIN{printf "%d", t * 1000}')" ;;
+                *) ms=""; code="${code:-000}" ;;
+            esac
+            echo "item=$p|$ms|${code:-000}"
+        done
+    else
+        for p in $MIRRORS; do
+            echo "item=$p|-|nocurl"
+        done
+    fi
+    rm -rf "$d" 2>/dev/null
+    kv result ok
+}
+
 # 从 API JSON 里按出现顺序配对 tag_name / published_at
 # 每个 release 对象里 tag_name 在前、published_at 在后，draft 的 published_at 为 null，
 # 靠 "新 TAG 覆盖旧 TAG" 自愈，不会像分别过滤再 paste 那样整体错位
@@ -199,7 +327,7 @@ parse_releases() {
 http_download() { # url out
     local url="$1" out="$2" p
     rm -f "$out"
-    for p in "" "$GH_PROXY" $PROXIES; do
+    for p in "" "$GH_PROXY" $(download_proxies); do
         if [ -z "$p" ] && [ "${SKIP_DIRECT:-0}" = "1" ]; then continue; fi
         if have curl; then
             if curl -fL --connect-timeout 8 -m 1800 -o "$out" "${p}${url}" 2>/dev/null && [ -s "$out" ]; then
@@ -1225,6 +1353,9 @@ case "$cmd" in
     api) cmd_api "$@" ;;
     migrate-data) cmd_migrate_data "$@" ;;
     migrate-core) cmd_migrate_core "$@" ;;
+    mirror-get) cmd_mirror_get "$@" ;;
+    mirror-set) cmd_mirror_set "$@" ;;
+    mirror-ping) cmd_mirror_ping "$@" ;;
     migrate-bin) cmd_migrate_bin "$@" ;;
     fix-paths) cmd_fix_paths ;;
     version)
