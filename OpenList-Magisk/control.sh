@@ -8,6 +8,7 @@
 #   control.sh start | stop | restart
 #   control.sh check
 #   control.sh versions
+#   control.sh migrate-core <base64旧目录> <base64新目录>   # 安装期用
 #   control.sh update [--force] [--asset NAME] [--proxy URL] [--tag vX.Y.Z]
 #   control.sh logs [行数]
 #   control.sh config-get
@@ -793,6 +794,95 @@ cmd_passwd() { # b64pass [b64user]
 }
 
 # ---------- 迁移 ----------
+# 安装期专用：只把数据从旧目录搬到新目录，不碰 service.sh、不启停服务
+# 安装时 service.sh 还是模板占位符，重启服务也无从谈起，所以单独一条路径
+# 用法: migrate-core <b64旧目录> <b64新目录> [b64旧二进制路径]
+# 输出: stage=/detail= 进度（供安装器轮询），结束给 source_removed / result
+cmd_migrate_core() {
+    local b64old="${1:-}" b64new="${2:-}" b64bin="${3:-}" old new oldbin="" extra need avail a b before=0 f
+    [ -n "$b64old" ] || fail "缺少源目录"
+    [ -n "$b64new" ] || fail "缺少目标目录"
+    old="$(printf '%s' "$b64old" | base64 -d 2>/dev/null)"
+    new="$(printf '%s' "$b64new" | base64 -d 2>/dev/null)"
+    [ -n "$old" ] && [ -n "$new" ] || fail "目录解析失败"
+    if [ -n "$b64bin" ]; then
+        oldbin="$(printf '%s' "$b64bin" | base64 -d 2>/dev/null)"
+    fi
+    [ -d "$old" ] || fail "源目录不存在：$old"
+    [ -f "$old/data.db" ] || fail "源目录里没有 data.db：$old"
+    case "$new" in
+        /data/*|/sdcard/*|/storage/*) ;;
+        *) fail "目标路径不合法" ;;
+    esac
+    [ "$new" = "$old" ] && fail "源和目标相同"
+    case "$new" in "$old"/*) fail "目标不能是源目录的子目录" ;; esac
+    case "$old" in "$new"/*) fail "目标不能是源目录的父目录" ;; esac
+    if [ -d "$new" ]; then
+        extra="$(ls -A "$new" 2>/dev/null | grep -vx 'bin' | head -n 1)"
+        [ -n "$extra" ] && fail "目标目录非空（含 $extra），请先清理"
+    fi
+    mkdir -p "$new" 2>/dev/null || fail "无法创建目标目录"
+    before="$(find "$new" -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+    # 空间检查：拿不到数字（FUSE/异常 df）就跳过，不阻断安装
+    need="$(du -sk "$old" 2>/dev/null | awk '{print $1}')"
+    avail="$(df -k "$new" 2>/dev/null | awk 'NR==2{print $4}')"
+    case "$need" in ''|*[!0-9]*) need="" ;; esac
+    case "$avail" in ''|*[!0-9]*) avail="" ;; esac
+    if [ -n "$need" ] && [ -n "$avail" ] && [ "$need" -gt "$avail" ]; then
+        fail "空间不足：需要 $((need / 1024)) MB，可用 $((avail / 1024)) MB"
+    fi
+
+    progress copy "开始复制（约 $(( ${need:-0} / 1024 )) MB）"
+    # 按顶层条目推进度：刷机界面没有进度条，至少让用户看到"正在复制哪个"
+    for f in "$old"/* "$old"/.[!.]*; do
+        [ -e "$f" ] || continue
+        # 数据目录里的 bin 不搬：二进制由安装脚本按用户选的选项单独装
+        [ "$f" = "$old/bin" ] && continue
+        progress copy "正在复制 $(basename "$f")"
+        cp -a "$f" "$new/" 2>/dev/null || fail "复制失败：$f"
+    done
+
+    progress verify "校验文件数"
+    # 源侧统计要排掉不参与迁移的 bin/
+    a="$(find "$old" -type f 2>/dev/null | grep -vF "$old/bin/" | wc -l | tr -d ' ')"
+    b="$(find "$new" -type f 2>/dev/null | wc -l | tr -d ' ')"
+    [ "$a" = "$((b - before))" ] || fail "文件数不一致（源 $a，新增 $((b - before))）"
+
+    progress verify "校验 data.db"
+    if have md5sum; then
+        a="$(md5sum "$old/data.db" 2>/dev/null | awk '{print $1}')"
+        b="$(md5sum "$new/data.db" 2>/dev/null | awk '{print $1}')"
+        [ -n "$a" ] && [ "$a" = "$b" ] || fail "data.db 校验失败"
+    fi
+
+    # 二进制若住在旧目录里，先搬出来再删源；放在校验之后，失败时旧模块仍可用
+    if [ -n "$oldbin" ] && [ -f "$oldbin" ]; then
+        case "$oldbin" in
+            "$old"/*)
+                progress move "搬移二进制到模块 bin"
+                mkdir -p "$MODDIR/bin" 2>/dev/null || fail "无法创建 $MODDIR/bin"
+                mv -f "$oldbin" "$MODDIR/bin/openlist" 2>/dev/null || fail "二进制搬移失败：$oldbin"
+                chmod 755 "$MODDIR/bin/openlist" 2>/dev/null || true
+                kv bin_moved "$MODDIR/bin/openlist"
+                ;;
+        esac
+    fi
+
+    progress clean "删除旧目录 $old"
+    case "$old" in
+        /|/data|/sdcard|/storage) fail "源目录路径异常（$old），未执行删除" ;;
+    esac
+    rm -rf "$old" 2>/dev/null
+    if [ -e "$old" ] && [ -n "$(ls -A "$old" 2>/dev/null)" ]; then
+        fail "旧目录未能完全删除（$old），请手动清理"
+    fi
+    kv source_removed 1
+    kv old_data_dir "$old"
+    kv new_data_dir "$new"
+    kv result ok
+}
+
 cmd_migrate_data() {
     local b64="${1:-}" new old was_running=0 a b old_esc new_esc extra before=0 bin_moved=0 target_bin="" old_bin="" i=0
     [ -n "$b64" ] || fail "缺少目标目录"
@@ -1067,6 +1157,7 @@ case "$cmd" in
     token) get_token && echo && kv result ok || fail "无法获取 token" ;;
     api) cmd_api "$@" ;;
     migrate-data) cmd_migrate_data "$@" ;;
+    migrate-core) cmd_migrate_core "$@" ;;
     migrate-bin) cmd_migrate_bin "$@" ;;
     fix-paths) cmd_fix_paths ;;
     version)
