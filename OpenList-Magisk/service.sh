@@ -312,6 +312,8 @@ fi
 
 # 不预设 admin 密码：OpenList v4.2.10 起由网页安装向导创建管理员
 # （POST /api/public/init/setup），首次打开 http://IP:PORT 会引导设置账号密码。
+# 输出落到 openlist.log：WebUI 能看日志，同时避免 service.sh 退出、终端/管道关闭后
+# openlist 再往 stderr 写时收到 SIGPIPE 直接退出（PR #38 反馈的问题）
 $OPENLIST_BINARY server --data "$DATA_DIR" >> "$OPENLIST_LOG" 2>&1 </dev/null &
 OPENLIST_PID=$!
 
