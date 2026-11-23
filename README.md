@@ -133,6 +133,9 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 ### 未发布
 
+- **修复** WebUI 管理员账号密码框输不进字：不再用 `type=password`（部分 WebView 的密码管理器/自动填充会抢焦点，输入框直接失效），改 `type=text` + `-webkit-text-security:disc` 遮罩，管理员卡片加「显示密码」切换；Token 框同步处理
+- **修复** 点「立即更新」只弹一句「更新失败」且没有任何原因：更新改成后台跑（`update-bg` 用 `setsid` 独立会话 + `update-status` 轮询），宿主 exec 返回/超时不会再掐断下载；失败原因优先显示 `error=`，没有就显示 stderr / 退出码，页面刷新还能接着上次的进度
+
 - **修复** versionCode 公式改为 `主版本×10000 + 次版本×100 + 修订号`，解决次版本到两位数时撞号（旧公式下 `v4.10.0` 与 `v5.0.0` 都算成 5000）；`module.prop` 与 `update.json` 现值同步为 `40210`
 - **修复** WebUI 更新提示文案与实际流程不符：下载、md5 校验、解压都在服务运行中完成，只在替换二进制前短暂停服务
 - **重构** 「所有版本」列表只走 GitHub 官方 API（`per_page=100` 分页翻到底），去掉国内代理与 HTML 兜底；限流时明确报「GitHub 限流」，可把 PAT 写进模块目录 `.github_token`（60 → 5000 次/小时）

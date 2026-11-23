@@ -104,12 +104,12 @@
 <!-- 下载配置 -->
 <h2>下载配置</h2>
 <div class="card">
-  <label>监听端口</label>
+  <label for="cfgPort">监听端口</label>
   <input id="cfgPort" inputmode="numeric" placeholder="5244">
-  <label>管理 Token</label>
-  <input id="cfgToken" type="password" placeholder="openlist-…" autocomplete="off">
+  <label for="cfgToken">管理 Token</label>
+  <input id="cfgToken" type="text" class="mask" placeholder="openlist-…" autocomplete="off" autocapitalize="off" spellcheck="false">
   <div class="hint">留空时由模块启动脚本自动从 data.db 提取</div>
-  <label>默认目标路径</label>
+  <label for="cfgPath">默认目标路径</label>
   <input id="cfgPath" placeholder="/115/影视/">
   <label>离线引擎</label>
   <div class="select" id="toolSelect" data-value="115 Open">
@@ -141,14 +141,15 @@
 <!-- 改密 -->
 <h2>管理员账号</h2>
 <div class="card">
-  <label>用户名（留空则不修改）</label>
-  <input id="newUser" type="text" autocomplete="username" placeholder="admin">
-  <label>新密码</label>
-  <input id="newPwd" type="password" autocomplete="new-password" placeholder="至少 8 位">
-  <label>确认新密码</label>
-  <input id="newPwd2" type="password" autocomplete="new-password" placeholder="再输一次">
+  <label for="newUser">用户名（留空则不修改）</label>
+  <input id="newUser" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="admin">
+  <label for="newPwd">新密码</label>
+  <input id="newPwd" type="text" class="mask" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="至少 8 位">
+  <label for="newPwd2">确认新密码</label>
+  <input id="newPwd2" type="text" class="mask" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="再输一次">
   <div class="hint">优先走 OpenList 管理 API 在线生效，不重启服务；API 不可用时才退回命令行方式（会重启一次）。</div>
   <div class="btns">
+    <button class="ghost" id="pwdEye" type="button">显示密码</button>
     <button class="warn" id="pwdBtn">修改密码</button>
   </div>
 </div>

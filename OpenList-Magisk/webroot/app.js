@@ -55,6 +55,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var state = { running: '0', port: '5244', ip: '127.0.0.1', pid: '-', version: '-' };
   var progTimer = null;
+  var updating = false;
 
   /* ---------- 基础 ---------- */
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
@@ -178,6 +179,18 @@
       });
       return { raw: r, kv: kv };
     });
+  }
+
+  // 失败原因：优先 control.sh 的 error=，再看宿主的 stderr/退出码，
+  // 避免脚本没跑起来时只显示一句「更新失败」什么都查不到
+  function whyOf(r, fallback) {
+    var kv = (r && r.kv) || {};
+    var raw = (r && r.raw) || {};
+    if (kv.error) return kv.error;
+    if (raw.stderr === 'TIMEOUT') return '命令执行超时（宿主没有返回结果）';
+    if (raw.stderr && raw.stderr !== 'NO_KSU') return String(raw.stderr).slice(0, 300);
+    if (raw.errno != null && raw.errno !== 0 && raw.errno !== -1) return '命令退出码 ' + raw.errno;
+    return fallback || '操作失败';
   }
 
   /* 调 OpenList 管理 API，返回解析后的 JSON */
@@ -421,16 +434,19 @@
     return ctl('check', 30000).then(function (r) {
       var kv = r.kv;
       if (kv.result !== 'ok') {
-        $('updateHint').textContent = '检查更新失败：' + (kv.error || 'GitHub 不可达');
-        if (!silent) toast(kv.error || '检查失败', true);
+        var why = whyOf(r, 'GitHub 不可达');
+        $('updateHint').textContent = '检查更新失败：' + why;
+        if (!silent) toast(why, true);
         return;
       }
       $('latestVer').textContent = kv.latest || '-';
       $('assetText').textContent = kv.asset || '-';
       if (kv.abi) $('abiText').textContent = kv.abi;
       var up = kv.up_to_date === '1';
-      $('updateBtn').disabled = !hasKsu || up;
-      $('updateBtn').textContent = up ? '已是最新' : '立即更新';
+      if (!updating) {
+        $('updateBtn').disabled = !hasKsu || up;
+        $('updateBtn').textContent = up ? '已是最新' : '立即更新';
+      }
       if (kv.stale === '1') {
         $('updateHint').textContent = 'GitHub 不可达，显示的是缓存版本；下载会走镜像。';
       } else {
@@ -453,20 +469,70 @@
     }[s] || s;
   }
 
-  function startProgress() {
-    $('updateProgress').className = 'progress show';
-    stopProgress();
-    progTimer = setInterval(function () {
-      sh('cat ' + PROGRESS + ' 2>/dev/null', 5000).then(function (r) {
-        var m = (r.stdout || '').match(/stage=(\S+)/);
-        var d = (r.stdout || '').match(/detail=(.*)/);
-        if (m) $('updateHint').textContent = '正在' + stageName(m[1]) + (d ? '：' + d[1] : '') + '…';
-      });
-    }, 1200);
+  function stageLine(kv) {
+    if (!kv || !kv.stage) return '';
+    return '正在' + stageName(kv.stage) + (kv.detail ? '：' + kv.detail : '') + '…';
   }
-  function stopProgress() {
-    if (progTimer) { clearInterval(progTimer); progTimer = null; }
-    $('updateProgress').className = 'progress';
+
+  // 进度条只负责显隐：内容由 update-status 轮询回来的 stage 填入
+  function startProgress() { $('updateProgress').className = 'progress show'; }
+  function stopProgress() { $('updateProgress').className = 'progress'; }
+
+  // 后台更新：update-bg 立即返回，之后轮询 update-status。
+  // 这样最长的一次 exec 只有几十毫秒，宿主不会因为长时间无返回把下载掐断。
+  function pollUpdate() {
+    var began = Date.now();
+    var LIMIT = 90 * 60 * 1000;
+    function tick() {
+      return ctl('update-status', 20000).then(function (r) {
+        var kv = (r && r.kv) || {};
+        if (kv.running === '1') {
+          var line = stageLine(kv);
+          if (line) $('updateHint').textContent = line;
+          if (Date.now() - began > LIMIT) throw new Error('更新超过 90 分钟仍未结束');
+          return sleep(1500).then(tick);
+        }
+        return r;
+      });
+    }
+    return tick();
+  }
+
+  // 页面刷新时如果后台更新还在跑，接着轮询，别让按钮看起来空闲
+  function resumeUpdateIfRunning() {
+    ctl('update-status', 15000).then(function (r) {
+      var kv = (r && r.kv) || {};
+      if (kv.running !== '1') return;
+      updating = true;
+      var b = $('updateBtn');
+      b.disabled = true;
+      b.textContent = '更新中…';
+      startProgress();
+      var line = stageLine(kv);
+      if (line) $('updateHint').textContent = line;
+      pollUpdate().then(function (rr) {
+        var k2 = (rr && rr.kv) || {};
+        updating = false;
+        stopProgress();
+        b.disabled = !hasKsu;
+        b.textContent = '立即更新';
+        if (k2.result === 'ok') {
+          toast('已更新到 ' + (k2.current || ''));
+          $('updateWarn').style.display = 'none';
+        } else {
+          var m = whyOf(rr, '更新失败');
+          toast(m, true);
+          $('updateWarn').textContent = m;
+          $('updateWarn').style.display = 'block';
+        }
+        refresh();
+      }).catch(function () {
+        updating = false;
+        stopProgress();
+        b.disabled = !hasKsu;
+        b.textContent = '立即更新';
+      });
+    }).catch(function () {});
   }
 
   function doUpdate() {
@@ -482,27 +548,39 @@
     b.dataset.confirm = '0';
     b.disabled = true;
     b.textContent = '更新中…';
+    updating = true;
     startProgress();
-    ctl('update --force', 1800000).then(function (r) {
-      var kv = r.kv;
+    $('updateWarn').style.display = 'none';
+
+    function done(msg) {
+      updating = false;
       stopProgress();
-      if (kv.result === 'ok') {
-        toast('已更新到 ' + (kv.current || ''));
-        $('updateWarn').style.display = 'none';
-      } else {
-        toast(kv.error || '更新失败', true);
-        $('updateWarn').textContent = kv.error || '更新失败';
+      b.disabled = !hasKsu;
+      b.textContent = '立即更新';
+      if (msg) {
+        toast(msg, true);
+        $('updateWarn').textContent = msg;
         $('updateWarn').style.display = 'block';
       }
-      return refresh().then(function () {
-        $('updateBtn').disabled = !hasKsu;
-        $('updateBtn').textContent = '立即更新';
-      });
+    }
+
+    ctl('update-bg --force', 20000).then(function (r) {
+      if (((r && r.kv) || {}).result !== 'ok') {
+        // 老版本 control.sh 没有 update-bg：退回同步调用，避免直接不可用
+        return ctl('update --force', 1800000);
+      }
+      return pollUpdate();
+    }).then(function (r) {
+      var kv = (r && r.kv) || {};
+      if (kv.result === 'ok') {
+        toast('已更新到 ' + (kv.current || kv.latest || ''));
+        $('updateWarn').style.display = 'none';
+        $('updateHint').textContent = '当前已是最新版本。';
+        return refresh().then(function () { done(); });
+      }
+      return refresh().then(function () { done(whyOf(r, '更新失败')); });
     }).catch(function (e) {
-      stopProgress();
-      toast('更新失败: ' + e, true);
-      b.disabled = false;
-      b.textContent = '立即更新';
+      done('更新失败: ' + ((e && e.message) || e));
     });
   }
 
@@ -1338,6 +1416,11 @@
     $('updateBtn').onclick = doUpdate;
     $('saveCfgBtn').onclick = saveConfig;
     $('pwdBtn').onclick = changePassword;
+    $('pwdEye').onclick = function () {
+      var on = $('newPwd').classList.toggle('reveal');
+      $('newPwd2').classList.toggle('reveal', on);
+      $('pwdEye').textContent = on ? '隐藏密码' : '显示密码';
+    };
     $('migrateDataBtn').onclick = migrateData;
     $('migrateBinBtn').onclick = migrateBin;
     $('fixPathsBtn').onclick = fixPaths;
@@ -1360,6 +1443,7 @@
     // 页面上就一直挂着"加载中…"
     refresh();
     checkUpdate(true);
+    resumeUpdateIfRunning();
     loadScan();
     loadVersions();
     loadConfig();

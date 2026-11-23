@@ -710,6 +710,122 @@ cmd_use_data() {
     kv result ok
 }
 
+# 更新任务放到独立会话里跑：WebUI 宿主的 exec 一旦返回/超时会把同一进程组的
+# 子进程一起收走，长下载就会「更新失败」且没有任何输出。用 setsid + 结果文件，
+# 前端轮询 update-status 取结果，exec 单次调用永远只有毫秒级。
+UPDATE_RUN_FILE="$TMP_DIR/openlist_update.running"
+UPDATE_OUT_FILE="$TMP_DIR/openlist_update.out"
+UPDATE_DONE_FILE="$TMP_DIR/openlist_update.done"
+
+update_alive() { # pid
+    local state
+    [ -n "${1:-}" ] || return 1
+    [ -d "/proc/$1" ] || return 1
+    state="$(sed -n 's/^State:[[:space:]]*//p' "/proc/$1/status" 2>/dev/null | head -n 1)"
+    case "$state" in Z*|"") return 1 ;; esac
+    return 0
+}
+
+# pid 可能因为 setsid fork 之类对不上，再用 progress 文件新鲜度兜一层
+update_running() {
+    local pid mtime now
+    pid="$(sed -n '1p' "$UPDATE_RUN_FILE" 2>/dev/null | tr -d ' \r\n')"
+    update_alive "$pid" && return 0
+    if [ -f "$PROGRESS_FILE" ]; then
+        mtime="$(stat -c %Y "$PROGRESS_FILE" 2>/dev/null || echo 0)"
+        now="$(date +%s 2>/dev/null || echo 0)"
+        [ $((now - mtime)) -lt 60 ] 2>/dev/null && return 0
+    fi
+    return 1
+}
+
+cmd_update_bg() {
+    local pid="" wrap="" uid=""
+    if [ -f "$UPDATE_RUN_FILE" ]; then
+        pid="$(sed -n '1p' "$UPDATE_RUN_FILE" 2>/dev/null | tr -d ' \r\n')"
+        if update_alive "$pid"; then
+            kv running 1
+            kv pid "$pid"
+            kv result ok
+            return 0
+        fi
+    fi
+    rm -f "$UPDATE_OUT_FILE" "$UPDATE_DONE_FILE" "$UPDATE_RUN_FILE" 2>/dev/null
+    progress resolve "启动更新任务"
+    # 包一层极小的 wrapper：子进程写自己的输出与退出码，父 shell 不用 wait
+    uid="$$"
+    wrap="$TMP_DIR/.openlist_upd_wrap.$uid"
+    cat > "$wrap" <<'EOS'
+#!/system/bin/sh
+echo $$ > "$UPD_PID"
+"$@" > "$UPD_OUT" 2>&1
+echo $? > "$UPD_DONE"
+rm -f "$0"
+EOS
+    chmod 755 "$wrap" 2>/dev/null || true
+    if have setsid; then
+        UPD_OUT="$UPDATE_OUT_FILE" UPD_DONE="$UPDATE_DONE_FILE" UPD_PID="$UPDATE_RUN_FILE" \
+            setsid sh "$wrap" sh "$MODDIR/control.sh" update "$@" < /dev/null >/dev/null 2>&1 &
+    else
+        UPD_OUT="$UPDATE_OUT_FILE" UPD_DONE="$UPDATE_DONE_FILE" UPD_PID="$UPDATE_RUN_FILE" \
+            nohup sh "$wrap" sh "$MODDIR/control.sh" update "$@" < /dev/null >/dev/null 2>&1 &
+    fi
+    sleep 1
+    pid="$(sed -n '1p' "$UPDATE_RUN_FILE" 2>/dev/null | tr -d ' \r\n')"
+    if [ -z "$pid" ]; then
+        rm -f "$wrap" 2>/dev/null
+        kv result fail
+        kv error "更新任务没能启动（进程未落地），请确认 /data/local/tmp 可写"
+        return 1
+    fi
+    kv running 1
+    kv pid "$pid"
+    kv result ok
+}
+
+cmd_update_status() {
+    if [ ! -f "$UPDATE_DONE_FILE" ] && [ ! -f "$UPDATE_RUN_FILE" ]; then
+        kv done 1
+        kv result fail
+        kv error "没有正在进行的更新任务"
+        return 0
+    fi
+    if [ -f "$UPDATE_DONE_FILE" ]; then
+        cat "$UPDATE_OUT_FILE" 2>/dev/null
+        if ! grep -q '^result=' "$UPDATE_OUT_FILE" 2>/dev/null; then
+            kv result fail
+            kv error "更新进程异常退出（exit=$(sed -n '1p' "$UPDATE_DONE_FILE" 2>/dev/null)）$(sed -n '1p' "$UPDATE_OUT_FILE" 2>/dev/null)"
+        fi
+        kv done 1
+        rm -f "$UPDATE_DONE_FILE" "$UPDATE_RUN_FILE" "$UPDATE_OUT_FILE" 2>/dev/null
+        return 0
+    fi
+    if [ -f "$UPDATE_RUN_FILE" ]; then
+        if ! update_running; then
+            # 进程没了但 done 文件还没落：给它一点时间，连续两次都没有才判失败
+            sleep 1
+            if [ -f "$UPDATE_DONE_FILE" ]; then
+                cat "$UPDATE_OUT_FILE" 2>/dev/null
+                grep -q '^result=' "$UPDATE_OUT_FILE" 2>/dev/null || { kv result fail; kv error "更新进程异常退出"; }
+                kv done 1
+                rm -f "$UPDATE_DONE_FILE" "$UPDATE_RUN_FILE" "$UPDATE_OUT_FILE" 2>/dev/null
+                return 0
+            fi
+            kv result fail
+            kv error "更新进程已退出但没有结果（可能被系统杀掉），请查看 /data/local/tmp/openlist_update.out"
+            kv done 1
+            rm -f "$UPDATE_RUN_FILE" 2>/dev/null
+            return 0
+        fi
+    fi
+    kv running 1
+    if [ -f "$PROGRESS_FILE" ]; then
+        kv stage "$(sed -n 's/^stage=//p' "$PROGRESS_FILE" 2>/dev/null | head -n 1)"
+        kv detail "$(sed -n 's/^detail=//p' "$PROGRESS_FILE" 2>/dev/null | head -n 1)"
+    fi
+    kv result ok
+}
+
 cmd_update() {
     local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code want_tag="" api code="" jsonf="" msg="" cached="" DL_PID="" DL_RC=0 sz=0
     while [ $# -gt 0 ]; do
@@ -1381,6 +1497,8 @@ case "$cmd" in
     delete-data) cmd_delete_data "$@" ;;
     use-data) cmd_use_data "$@" ;;
     update) cmd_update "$@" ;;
+    update-bg) cmd_update_bg "$@" ;;
+    update-status) cmd_update_status ;;
     logs) cmd_logs "$@" ;;
     config-get) cmd_config_get ;;
     config-save) cmd_config_save "$@" ;;

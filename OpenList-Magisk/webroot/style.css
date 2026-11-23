@@ -161,6 +161,10 @@ input,select,textarea{
 }
 input:focus,select:focus,textarea:focus{border-color:var(--primary)}
 input::placeholder,textarea::placeholder{color:var(--sub);opacity:.85}
+/* 密码类输入框不再用 type=password：部分 WebView 的自带密码管理器/自动填充
+   会抢焦点甚至让输入框变成不可输入。改成 text + 文字遮罩，行为一致且可控 */
+.mask{-webkit-text-security:disc}
+.mask.reveal{-webkit-text-security:none}
 /* 下拉框：部分 WebView 的 option 弹层不继承页面配色，单独指定 */
 select{
   background:var(--card-solid);
