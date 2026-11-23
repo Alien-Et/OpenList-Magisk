@@ -160,13 +160,11 @@
 <div class="card">
   <details>
     <summary>数据目录迁移</summary>
-    <label>新数据目录</label>
-    <div class="chips" data-target="newDataDir" id="dataDirChips">
+    <div class="chips" id="dataDirChips">
       <button type="button" class="chip-btn" data-path="/data/adb/openlist">/data/adb/openlist</button>
       <button type="button" class="chip-btn" data-path="/sdcard/Android/openlist">/sdcard/Android/openlist</button>
     </div>
-    <input id="newDataDir" placeholder="/data/adb/openlist">
-    <div class="hint">支持 /data、/sdcard、/storage。目标必须为空目录或不存在。</div>
+    <div class="hint">点选目标目录即可（当前使用中的不会显示）。目标必须为空目录或不存在。</div>
     <div class="warnbox">会停止服务 → 复制 → 校验文件数与 data.db → 修改 service.sh → 启动。跨分区（/data → /sdcard）会丢失属主权限，SQLite 性能也会下降。</div>
     <div class="btns"><button class="warn" id="migrateDataBtn">开始迁移</button></div>
   </details>

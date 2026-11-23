@@ -220,13 +220,23 @@
     };
   }
 
-  /* 迁移页只显示「非当前」的候选路径 */
+  /* 迁移页只显示「非当前」的候选路径；只剩一个时自动选中 */
   function filterChips(boxId, cur) {
     var box = $(boxId);
     if (!box) return;
+    var visible = [];
     box.querySelectorAll('button[data-path]').forEach(function (b) {
-      b.style.display = (b.dataset.path === cur) ? 'none' : '';
+      var hide = (b.dataset.path === cur);
+      b.style.display = hide ? 'none' : '';
+      if (!hide) visible.push(b);
     });
+    if (visible.length === 1) {
+      box.dataset.value = visible[0].dataset.path;
+      box.querySelectorAll('.chip-btn').forEach(function (x) { x.classList.remove('active'); });
+      visible[0].classList.add('active');
+    } else if (!visible.some(function (b) { return b.classList.contains('active'); })) {
+      box.dataset.value = '';
+    }
   }
 
   /* 把 admin API 的失败原因翻译成人话 */
@@ -327,20 +337,22 @@
   /* 迁移预设路径 */
   function initPresets() {
     document.querySelectorAll('.chips').forEach(function (box) {
-      var target = document.getElementById(box.dataset.target);
-      if (!target) return;
+      var target = box.dataset.target ? document.getElementById(box.dataset.target) : null;
       box.querySelectorAll('.chip-btn').forEach(function (b) {
         b.onclick = function () {
-          target.value = b.dataset.path;
+          box.dataset.value = b.dataset.path;
           box.querySelectorAll('.chip-btn').forEach(function (x) { x.classList.remove('active'); });
           b.classList.add('active');
+          if (target) target.value = b.dataset.path;
         };
       });
-      target.addEventListener('input', function () {
-        box.querySelectorAll('.chip-btn').forEach(function (x) {
-          x.classList.toggle('active', x.dataset.path === target.value);
+      if (target) {
+        target.addEventListener('input', function () {
+          box.querySelectorAll('.chip-btn').forEach(function (x) {
+            x.classList.toggle('active', x.dataset.path === target.value);
+          });
         });
-      });
+      }
     });
   }
 
@@ -966,7 +978,9 @@
 
   /* ---------- 迁移 ---------- */
   function migrateData() {
-    var dir = $('newDataDir').value.trim();
+    var box = $('dataDirChips');
+    var dir = ((box && box.dataset.value) || '').trim();
+    if (!dir) return toast('请先点选目标目录', true);
     if (!/^\/(data|sdcard|storage)\/[A-Za-z0-9_\-./]*$/.test(dir)) return toast('目标目录不合法', true);
     var b = $('migrateDataBtn');
     if (b.dataset.confirm !== '1') {
@@ -981,7 +995,10 @@
     ctl("migrate-data '" + b64utf8(dir) + "'", 1800000).then(function (r) {
       if (r.kv.result === 'ok') {
         toast('已迁移到 ' + (r.kv.new_data_dir || dir));
-        $('newDataDir').value = '';
+        if (box) {
+          box.dataset.value = '';
+          box.querySelectorAll('.chip-btn').forEach(function (x) { x.classList.remove('active'); });
+        }
       } else {
         toast(r.kv.error || '迁移失败', true);
       }
