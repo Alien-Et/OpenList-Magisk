@@ -252,7 +252,7 @@ jobs:
           set -e
           V="${{ env.OPENLIST_VERSION }}"
           BASE="openlist-magisk-$V"
-          FILES="$BASE-arm64.zip $BASE-arm.zip $BASE-amd64.zip $BASE-386.zip update-arm64.json update-arm.json update-amd64.json update-386.json"
+          FILES="$BASE-arm64.zip $BASE-arm.zip $BASE-amd64.zip $BASE-386.zip"
 
           echo "Synced with OpenList official release $V" > release_notes.txt
           echo "" >> release_notes.txt
@@ -288,10 +288,10 @@ jobs:
               $FILES
           fi
 
-          # 校验：四份清单必须都在 Release 里，缺一条对应架构就查不到更新
+          # 校验：四个架构包必须在 Release 里
           ASSETS=$(gh release view "$V" --json assets -q '.assets[].name')
-          for f in update-arm64.json update-arm.json update-amd64.json update-386.json; do
-            echo "$ASSETS" | grep -qx "$f" || { echo "::error::Release 缺少 $f"; exit 1; }
+          for a in arm64 arm amd64 386; do
+            echo "$ASSETS" | grep -qx "$BASE-$a.zip" || { echo "::error::Release 缺少 $BASE-$a.zip"; exit 1; }
           done
           echo "Release $V 资产校验通过"
 

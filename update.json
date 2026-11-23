@@ -1,6 +1,6 @@
 {
-    "version": "v4.2.10",
-    "versionCode": 40210,
-    "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/v4.2.10/openlist-magisk-online.zip",
+    "version": "v5.0.0",
+    "versionCode": 50000,
+    "zipUrl": "https://github.com/Alien-Et/OpenList-Magisk/releases/download/v5.0.0/openlist-magisk-online.zip",
     "changelog": "https://raw.githubusercontent.com/Alien-Et/OpenList-Magisk/main/CHANGELOG-ONLINE.md"
 }
