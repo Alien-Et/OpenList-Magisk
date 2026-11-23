@@ -39,7 +39,7 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
    - 进入安装配置界面：
      - 选择二进制文件安装位置
      - 选择数据目录存储位置
-     - 选择是否修改默认密码为 admin
+     - 更新安装时如果检测到旧数据，会多问一句要不要一起迁过来
 
 3. **完成安装**
    - 等待安装完成
@@ -60,7 +60,7 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 
 - 状态：运行中/已停止、访问地址、PID、数据目录、架构
 - 启停/重启服务
-- 版本与更新：拉取 OpenList 官方 Release，按 CPU 架构选择 `android-arm64 / android-arm / android-amd64 / android-386`，下载后自动停止服务、替换二进制、重新启动（失败可用 `.bak` 回滚）
+- 版本与更新：拉取 OpenList 官方 Release，按 CPU 架构选择 `android-arm64 / android-arm / android-amd64 / android-386`，下载后停止服务、替换二进制、重新启动（失败自动用 `.bak` 回滚）；下载可选镜像，进度实时显示
 - 下载配置：修改 `offline.conf` 的端口、Token、目标路径、离线引擎、删除策略
 - 管理员账号：改用户名、改密码（走 OpenList 管理 API，在线生效，不重启）
 - 存储：列表、启用/禁用、全部重载
@@ -81,7 +81,8 @@ sh /data/adb/modules/openlist/control.sh logs 200
 sh /data/adb/modules/openlist/control.sh config-get
 ```
 
-`update` 会依次尝试直连和内置 GitHub 代理，可用 `GH_PROXY` 环境变量或 `--proxy` 指定。
+`update` 先试直连，再按实测延迟顺序试国内镜像；镜像偏好（自动 / 直连 / 指定）在 WebUI 里选，存到 `<数据目录>/mirror.conf`。
+WebUI 里点更新走的是 `update-bg`（后台跑）+ `update-status`（轮询），宿主超时不会把下载掐断。
 
 ### 访问方式
 - Web 界面访问：`http://<设备IP>:5244`
@@ -123,6 +124,18 @@ sh /data/adb/modules/openlist/control.sh config-get
 - 更新不会清除现有数据
 - 可在安装时重新选择配置选项
 - 版本列表只走 GitHub 官方 API；遇到 403 限流时可在模块目录放一个 `.github_token`（一行 PAT）把额度从 60 次/小时提到 5000
+
+## 更新日志
+
+> 本次为模块更新，非 OpenList 官方二进制更新。
+
+### v4.2.10.1
+
+- 修复 WebUI 管理员账号密码框输不进字（改用文字遮罩，不再用 `type=password`）
+- 修复「立即更新」只显示一句「更新失败」：更新改为后台执行 + 轮询，失败会带具体原因
+- 版本号增加第四段，`v4.2.10.1` 表示二进制仍是 4.2.10，只是模块有改动
+
+> 本次更新只测试到「WebUI 能正常用」这一步，没有做完整回归，可能还有没挖出来的隐藏 bug。遇到问题请到仓库提 issue。
 
 ## 数据迁移说明
 1. 安装时可选择数据目录与二进制位置；更新安装时若检测到旧数据且换了目录，安装界面会多问一次「音量+ 迁移 / 音量- 跳过」（默认跳过，迁移失败不删源）

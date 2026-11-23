@@ -947,8 +947,13 @@ cmd_update() {
         # 启动成功后再同步 module.prop，避免失败时版本号被改花
         case "$tag" in
             v[0-9]*.[0-9]*.[0-9]*)
-                new_ver="$tag"
-                new_code="$(echo "${tag#v}" | awk -F. '{printf "%d", $1 * 10000 + $2 * 100 + $3}')"
+                # 模块版本可能带第 4 段（v4.2.10.1 = 二进制 4.2.10 + 模块修订）。
+                # 二进制版本没变就保留修订号，别把 4021001 降回 4021000
+                case "$cur" in
+                    "$tag".*) new_ver="$cur" ;;
+                    *) new_ver="$tag" ;;
+                esac
+                new_code="$(echo "${new_ver#v}" | awk -F. '{v=int($4); printf "%d", $1 * 1000000 + $2 * 10000 + $3 * 100 + v}')"
                 sed -i "s/^version=.*/version=$new_ver/" "$MODULE_PROP" 2>/dev/null || true
                 sed -i "s/^versionCode=.*/versionCode=$new_code/" "$MODULE_PROP" 2>/dev/null || true
                 ;;
