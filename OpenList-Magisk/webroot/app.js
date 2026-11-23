@@ -512,22 +512,28 @@
       return;
     }
     list.forEach(function (b) {
-      var row = document.createElement('div');
-      row.className = 'scanrow';
-      var p = document.createElement('span');
-      p.className = 'path';
+      var item = document.createElement('div');
+      item.className = 'scanitem';
+
+      var p = document.createElement('div');
+      p.className = 'scanpath';
       p.textContent = b.path;
       p.onclick = function () { copyText(b.path); };
+
+      var foot = document.createElement('div');
+      foot.className = 'scanfoot';
       var meta = document.createElement('span');
       meta.className = 'scanmeta';
       meta.textContent = fmtSize(b.size);
-      row.appendChild(p);
-      row.appendChild(meta);
       var tag = document.createElement('span');
       tag.className = b.cur ? 'chip' : 'chip gray';
       tag.textContent = b.cur ? '当前' : '多余';
-      row.appendChild(tag);
-      box.appendChild(row);
+      foot.appendChild(meta);
+      foot.appendChild(tag);
+
+      item.appendChild(p);
+      item.appendChild(foot);
+      box.appendChild(item);
     });
   }
 
@@ -539,29 +545,26 @@
       return;
     }
     list.forEach(function (d) {
-      var wrap = document.createElement('div');
-      wrap.className = 'scanrow wrap';
+      var item = document.createElement('div');
+      item.className = 'scanitem';
 
-      var top = document.createElement('div');
-      top.className = 'scanrow';
-      var p = document.createElement('span');
-      p.className = 'path';
+      var p = document.createElement('div');
+      p.className = 'scanpath';
       p.textContent = d.path;
       p.onclick = function () { copyText(d.path); };
+
+      var foot = document.createElement('div');
+      foot.className = 'scanfoot';
       var meta = document.createElement('span');
       meta.className = 'scanmeta';
       meta.textContent = d.files + ' 个文件 · db ' + (d.mt || '-');
-      top.appendChild(p);
-      top.appendChild(meta);
-      wrap.appendChild(top);
+      foot.appendChild(meta);
 
-      var acts = document.createElement('div');
-      acts.className = 'scanacts';
       if (d.cur) {
         var t = document.createElement('span');
         t.className = 'chip';
         t.textContent = '当前使用';
-        acts.appendChild(t);
+        foot.appendChild(t);
       } else {
         var b1 = document.createElement('button');
         b1.className = 'mini ghost';
@@ -570,12 +573,14 @@
         var b2 = document.createElement('button');
         b2.className = 'mini danger';
         b2.textContent = '删除';
-        b2.onclick = function () { askDeleteData(d.path, wrap); };
-        acts.appendChild(b1);
-        acts.appendChild(b2);
+        b2.onclick = function () { askDeleteData(d.path, item); };
+        foot.appendChild(b1);
+        foot.appendChild(b2);
       }
-      wrap.appendChild(acts);
-      box.appendChild(wrap);
+
+      item.appendChild(p);
+      item.appendChild(foot);
+      box.appendChild(item);
     });
   }
 
@@ -685,6 +690,16 @@
     return ctl('versions', 60000).then(function (r) {
       var rows = (r.raw.stdout || '').split('\n').filter(function (l) {
         return l && l.indexOf('=') < 0;
+      });
+      // 版本号降序（HTML 兜底时没有日期，顺序也不保证）
+      rows.sort(function (a, b) {
+        var va = (a.split('|')[0] || '').replace(/^v/, '').split('.').map(Number);
+        var vb = (b.split('|')[0] || '').replace(/^v/, '').split('.').map(Number);
+        for (var i = 0; i < 3; i++) {
+          var x = va[i] || 0, y = vb[i] || 0;
+          if (x !== y) return y - x;
+        }
+        return 0;
       });
       if (!rows.length) {
         var msg = r.kv.error || '没有获取到版本列表';

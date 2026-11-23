@@ -120,6 +120,21 @@ http_get() { # url [timeout]
     return 1
 }
 
+# GitHub API 要求带 User-Agent，busybox wget 默认 UA 可能被 403
+http_get_ua() { # url [timeout]
+    local t="${2:-20}"
+    if have curl; then
+        curl -fsSL -m "$t" -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" "$1" 2>/dev/null && return 0
+    fi
+    if [ -n "$BB" ]; then
+        "$BB" wget -q -T "$t" -O - --header="User-Agent: OpenList-Magisk" "$1" 2>/dev/null && return 0
+    fi
+    if have wget; then
+        wget -q -T "$t" -O - --header="User-Agent: OpenList-Magisk" "$1" 2>/dev/null && return 0
+    fi
+    return 1
+}
+
 http_download() { # url out
     local url="$1" out="$2" p
     rm -f "$out"
@@ -279,7 +294,7 @@ cmd_check() {
 
 # 列出所有 release（含历史），供回退选择。输出 item=版本|发布日期
 cmd_versions() {
-    local json now ts tf df
+    local json now ts tf df tf2 p
     now="$(date +%s 2>/dev/null || echo 0)"
     ts="$(sed -n 's/^ts=//p' "$RELEASES_CACHE" 2>/dev/null | head -n 1)"
     # 5 分钟内复用缓存，避免反复消耗 GitHub 未认证额度（60 次/小时）
@@ -289,33 +304,69 @@ cmd_versions() {
         return 0
     fi
 
-    json="$(http_get "$RELEASES_URL" 30)" || fail "无法获取版本列表（检查网络或代理）"
-    [ -n "$json" ] || fail "版本列表为空"
-
     tf="$TMP_DIR/.rel_tags.$$"
     df="$TMP_DIR/.rel_dates.$$"
+    tf2="$TMP_DIR/.rel_pairs.$$"
+    # 1) 直连 API（带 UA）；2) 失败逐个走内置代理；3) 仍不行就抓 releases HTML
+    json="$(http_get_ua "$RELEASES_URL" 30)"
+    if [ -z "$json" ]; then
+        for p in $PROXIES; do
+            json="$(http_get_ua "$p$RELEASES_URL" 30)"
+            [ -n "$json" ] && break
+        done
+    fi
+
+    if [ -z "$json" ] || ! printf '%s' "$json" | grep -q '"tag_name"'; then
+        local html
+        html="$(http_get_ua "https://github.com/OpenListTeam/OpenList/releases" 30)"
+        if [ -n "$html" ]; then
+            printf '%s' "$html" | grep -o 'releases/tag/v[0-9][0-9.]*' \
+                | sed 's|.*releases/tag/||' | sort -u > "$tf" 2>/dev/null
+            if [ -s "$tf" ]; then
+                {
+                    echo "ts=$now"
+                    while IFS= read -r v; do
+                        [ -n "$v" ] && echo "item=$v|"
+                    done < "$tf"
+                } > "$RELEASES_CACHE.tmp" 2>/dev/null
+                mv -f "$RELEASES_CACHE.tmp" "$RELEASES_CACHE" 2>/dev/null || true
+                chmod 600 "$RELEASES_CACHE" 2>/dev/null || true
+                rm -f "$tf" "$df"
+                sed -n 's/^item=//p' "$RELEASES_CACHE"
+                kv source html
+                kv result ok
+                return 0
+            fi
+        fi
+        kv debug "$(printf '%s' "$json" | head -c 300)"
+        rm -f "$tf" "$df"
+        fail "解析版本列表失败"
+    fi
+
     # 用 tr 把 JSON 拆成一行一个字段，避免依赖 grep -o 与复杂正则
     printf '%s' "$json" | tr ',' '\n' | grep '"tag_name"' \
-        | sed 's/.*"tag_name"[^"]*"\([^"]*\)".*/\1/' | grep -E '^v[0-9]' > "$tf" 2>/dev/null
+        | sed 's/.*"tag_name"[^"]*"\([^"]*\)".*/\1/' > "$tf" 2>/dev/null
     printf '%s' "$json" | tr ',' '\n' | grep '"published_at"' \
         | sed 's/.*"published_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/; s/.*"published_at".*//' \
         | cut -c1-10 > "$df" 2>/dev/null
 
-    if [ ! -s "$tf" ]; then
-        kv debug "$(printf '%s' "$json" | head -c 200)"
-        rm -f "$tf" "$df"
+    # 先按顺序配对再过滤非 v 版本，避免 tags 与 dates 数量错位（否则会出现 "|2025-06-20" 这种空版本行）
+    paste -d'|' "$tf" "$df" 2>/dev/null | grep -E '^v[0-9]' > "$tf2" 2>/dev/null
+    if [ ! -s "$tf2" ]; then
+        kv debug "$(printf '%s' "$json" | head -c 300)"
+        rm -f "$tf" "$df" "$tf2"
         fail "解析版本列表失败"
     fi
 
     {
         echo "ts=$now"
-        paste -d'|' "$tf" "$df" 2>/dev/null | while IFS= read -r line; do
+        while IFS= read -r line; do
             echo "item=$line"
-        done
+        done < "$tf2"
     } > "$RELEASES_CACHE.tmp" 2>/dev/null
     mv -f "$RELEASES_CACHE.tmp" "$RELEASES_CACHE" 2>/dev/null || true
     chmod 600 "$RELEASES_CACHE" 2>/dev/null || true
-    rm -f "$tf" "$df"
+    rm -f "$tf" "$df" "$tf2"
 
     sed -n 's/^item=//p' "$RELEASES_CACHE"
     kv result ok
