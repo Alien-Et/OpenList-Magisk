@@ -78,24 +78,24 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 ## 两条更新通道
 
-| 通道 | 包内 `updateJson` | 版本号来源 | 更新日志 |
-|---|---|---|---|
-| 架构通道（arm64 / arm / amd64 / 386） | `update-<arch>.json` | 上游 OpenList 官方，CI 自动同步 | 上游 CHANGELOG |
-| 在线通道（online） | `update.json` | 手动触发 `online.yml` 填版本号 | `CHANGELOG-ONLINE.md` |
+| 通道 | 包内 `updateJson` | 模块版本号 | versionCode 规则 | 更新日志 |
+|---|---|---|---|---|
+| 架构通道（arm64 / arm / amd64 / 386） | `update-<arch>.json` | 跟随 OpenList 二进制 | 主×10000 + 次×100 + 修订 | 上游 CHANGELOG |
+| 在线通道（online） | `update.json` | 人工维护，**v1.0.0 起** | 主×100000 + 次×100 + 修订 | `CHANGELOG-ONLINE.md` |
 
 装的是哪个包，模块管理器就检查哪条通道，两者互不干扰 —— 上游发新版不会把 online 用户的版本号顶掉，反过来也一样。
 
 ## online 包是什么：提前体验版
 
-`openlist-magisk-online.zip` 和其它 4 个包是**同一个模块的两种装法**，区别只在「谁发版」和「包里有没有二进制」。
+`openlist-magisk-online.zip` 和其它 4 个包是**同一个模块的两种装法**，注册名分别是 `OpenList(online)` 和 `OpenList(binary)`。
 
-| | 4 个架构包（arm64 / arm / amd64 / 386） | online 包 |
+| | `OpenList(binary)`（arm64 / arm / amd64 / 386） | `OpenList(online)` |
 |---|---|---|
 | 谁发版 | CI 全自动 | **我手动触发** |
 | 跟着谁走 | 上游 OpenList 官方 Release | 模块自身的脚本 / WebUI 改动 |
 | 什么时候更新 | 上游发新版才更新 | 模块功能改了就发 |
 | 包内二进制 | 自带，离线可装 | **无**，安装时下载约 55 MB |
-| 版本号 | 上游版本号 | 我填的版本号 |
+| 版本号 | 跟随 OpenList（如 v4.2.10） | 人工维护，v1.0.0 起递增 |
 
 **要点：**
 
@@ -104,7 +104,7 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - **4 个架构包全自动，我不插手。** CI 只盯上游 OpenList 的 Release，上游一发就自动构建、自动发版，二进制版本号跟模块版本号严格对齐。
 - **所以架构包用户拿不到我新改的模块功能**，得等上游下次发版。想提前用，改装 online 包 —— 之后你的更新就跟着 online 通道走，不会自动切回架构通道；想回去就重装一个架构包。
 
-两个通道的版本号是同一套（`v4.2.10`、`v4.2.11`…）。同一个版本号可能同时有架构包和 online 包，也可能只有其中一个——**看 Release 里挂了哪些资产就知道**。
+**两套版本号互不干扰**：online 是 `v1.0.0`、`v1.0.1`…，架构包是 `v4.2.10`、`v4.2.11`…（跟 OpenList 走）。`versionCode` 也用不同基数，不会互相判成降级。
 
 ## 二进制获取顺序
 

@@ -55,12 +55,12 @@ OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件�
 
 `openlist-magisk-online.zip` 和其它 4 个包是**同一个模块的两种装法**：
 
-| | 4 个架构包 | online 包 |
+| | `OpenList(binary)` 的 4 个包 | `OpenList(online)` |
 |---|---|---|
 | 谁发版 | CI 全自动 | **我手动触发** |
 | 跟着谁走 | 上游 OpenList 官方 Release | 模块自身的脚本 / WebUI 改动 |
 | 包内二进制 | 自带，离线可装 | **无**，安装时下载约 55 MB |
-| 版本号 | 上游版本号 | 我填的版本号 |
+| 版本号 | 跟随 OpenList（如 v4.2.10） | 人工维护，**v1.0.0 起**递增 |
 
 - **online 是提前体验版**：模块功能改了就发，装了它立刻能用上，不用等上游 OpenList 发新版
 - **代价是没有二进制**：装的时候要联网下载，或装完在 WebUI 里点「立即更新」
