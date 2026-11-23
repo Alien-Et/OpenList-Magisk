@@ -364,6 +364,15 @@
     }).catch(function (e) { toast('读取失败: ' + e, true); });
   }
 
+  /* 迁移/清理这类会改变磁盘布局的动作完成后，一次性刷新整页：
+     状态与路径胶囊（refresh）+ 路径体检（loadScan）+ 日志（loadLog） */
+  function refreshAll() {
+    return refresh()
+      .then(function () { return loadScan(); })
+      .then(function () { return loadLog(); })
+      .catch(function () {});
+  }
+
   function waitRunning(expect, tries) {
     var n = 0;
     return new Promise(function (resolve) {
@@ -994,7 +1003,10 @@
     b.textContent = '迁移中…';
     ctl("migrate-data '" + b64utf8(dir) + "'", 1800000).then(function (r) {
       if (r.kv.result === 'ok') {
-        toast('已迁移到 ' + (r.kv.new_data_dir || dir));
+        var msg = '已迁移到 ' + (r.kv.new_data_dir || dir);
+        if (r.kv.source_removed === '1') msg += '（源目录已删除）';
+        if (r.kv.bin_moved) msg += '，二进制同步到 ' + r.kv.bin_moved;
+        toast(msg);
         if (box) {
           box.dataset.value = '';
           box.querySelectorAll('.chip-btn').forEach(function (x) { x.classList.remove('active'); });
@@ -1002,7 +1014,7 @@
       } else {
         toast(r.kv.error || '迁移失败', true);
       }
-      return refresh();
+      return refreshAll();
     }).finally(function () {
       b.disabled = !hasKsu;
       b.textContent = '开始迁移';
@@ -1024,12 +1036,12 @@
     b.textContent = '迁移中…';
     ctl("migrate-bin '" + b64utf8(p) + "'", 180000).then(function (r) {
       if (r.kv.result === 'ok') {
-        toast('二进制已迁移');
+        toast(r.kv.old_bin_removed ? '二进制已迁移，旧文件已删除' : '二进制已迁移');
         $('newBinPath').value = '';
       } else {
         toast(r.kv.error || '迁移失败', true);
       }
-      return refresh();
+      return refreshAll();
     }).finally(function () {
       b.disabled = !hasKsu;
       b.textContent = '开始迁移';

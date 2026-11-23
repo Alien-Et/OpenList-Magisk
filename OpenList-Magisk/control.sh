@@ -746,7 +746,7 @@ cmd_passwd() { # b64pass [b64user]
 
 # ---------- 迁移 ----------
 cmd_migrate_data() {
-    local b64="${1:-}" new old was_running=0 a b old_esc new_esc extra before=0 keep_bin=0 f i=0
+    local b64="${1:-}" new old was_running=0 a b old_esc new_esc extra before=0 bin_moved=0 target_bin="" old_bin="" i=0
     [ -n "$b64" ] || fail "缺少目标目录"
     new="$(echo "$b64" | base64 -d 2>/dev/null)"
     old="$DATA_DIR"
@@ -807,18 +807,42 @@ cmd_migrate_data() {
         }
     fi
 
-    # 迁移 = 移动：校验通过后清空源目录里的数据（二进制在源目录 bin 里时保留它）
+    # 迁移 = 移动：校验通过后把源目录整个删掉，不留双份
+    # 二进制如果住在源目录里（安装选项 1），先搬到模块 bin/ 再删源，否则会把自己删没；
+    # 不搬到新数据目录，是因为 /sdcard 上通常不可执行（noexec）
     case "$OPENLIST_BINARY" in
-        "$old"/bin/*) keep_bin=1 ;;
+        "$old"/*)
+            old_bin="$OPENLIST_BINARY"
+            target_bin="$MODDIR/bin/openlist"
+            mkdir -p "$MODDIR/bin" 2>/dev/null || {
+                [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
+                fail "无法创建 $MODDIR/bin"
+            }
+            if [ -f "$target_bin" ]; then
+                if have md5sum && [ "$(md5sum "$OPENLIST_BINARY" 2>/dev/null | awk '{print $1}')" = "$(md5sum "$target_bin" 2>/dev/null | awk '{print $1}')" ]; then
+                    rm -f "$OPENLIST_BINARY" 2>/dev/null
+                else
+                    [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
+                    fail "$MODDIR/bin 已存在另一份二进制，请先「迁移二进制」再迁移数据"
+                fi
+            else
+                mv -f "$OPENLIST_BINARY" "$target_bin" 2>/dev/null || {
+                    [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
+                    fail "源目录内的二进制搬移失败，已中止（数据未删除）"
+                }
+            fi
+            chmod 755 "$target_bin" 2>/dev/null || true
+            sed -i "s|^OPENLIST_BINARY=.*|OPENLIST_BINARY=\"$target_bin\"|" "$SERVICE_SH" || fail "更新 service.sh 失败"
+            [ -f "$ACTION_SH" ] && sed -i "s|^OPENLIST_BINARY=.*|OPENLIST_BINARY=\"$target_bin\"|" "$ACTION_SH" 2>/dev/null || true
+            OPENLIST_BINARY="$target_bin"
+            bin_moved=1
+            # cp -a 把源 bin/ 里的二进制也一起复制了，删掉这份多余副本（留一份在模块 bin/）
+            if [ -f "$new/bin/$(basename "$old_bin")" ]; then
+                rm -f "$new/bin/$(basename "$old_bin")" 2>/dev/null
+                rmdir "$new/bin" 2>/dev/null || true
+            fi
+            ;;
     esac
-    for f in "$old"/* "$old"/.[!.]*; do
-        [ -e "$f" ] || continue
-        if [ "$keep_bin" = "1" ] && [ "$f" = "$old/bin" ]; then
-            continue
-        fi
-        rm -rf "$f" 2>/dev/null
-    done
-    kv source_cleaned 1
 
     sed -i "s|^DATA_DIR=.*|DATA_DIR=\"$new\"|" "$SERVICE_SH" || fail "更新 service.sh 失败"
 
@@ -830,6 +854,22 @@ cmd_migrate_data() {
         kv config_updated 1
     fi
 
+    # 源目录整删：先挡掉危险路径，删不干净就明确报错，不静默留下双份数据
+    case "$old" in
+        /|/data|/sdcard|/storage|"$MODDIR"|"$MODDIR"/*)
+            [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
+            fail "源目录路径异常（$old），未执行删除"
+            ;;
+    esac
+    progress clean "删除源目录 $old"
+    rm -rf "$old" 2>/dev/null
+    if [ -e "$old" ] && [ -n "$(ls -A "$old" 2>/dev/null)" ]; then
+        [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
+        fail "源目录未能完全删除（$old），请手动清理"
+    fi
+    kv source_removed 1
+    [ "$bin_moved" = "1" ] && kv bin_moved "$OPENLIST_BINARY"
+
     DATA_DIR="$new"
     rm -f "$PROGRESS_FILE"
 
@@ -840,7 +880,7 @@ cmd_migrate_data() {
 }
 
 cmd_migrate_bin() {
-    local b64="${1:-}" new was_running=0
+    local b64="${1:-}" new was_running=0 i=0 old_src="" ok=0
     [ -n "$b64" ] || fail "缺少目标路径"
     new="$(echo "$b64" | base64 -d 2>/dev/null)"
     # 运行时 /system/bin 在 Magisk/KernelSU 下是 overlay，写进去重启即丢；
@@ -858,6 +898,7 @@ cmd_migrate_bin() {
         "$DATA_DIR"/*) fail "二进制不能放在数据目录内" ;;
     esac
     [ -f "$new" ] && fail "目标文件已存在"
+    old_src="$OPENLIST_BINARY"
 
     [ -n "$(openlist_pid)" ] && was_running=1
     if [ "$was_running" = "1" ]; then
@@ -887,6 +928,26 @@ cmd_migrate_bin() {
     sed -i "s|^OPENLIST_BINARY=.*|OPENLIST_BINARY=\"$new\"|" "$SERVICE_SH" || fail "更新 service.sh 失败"
     [ -f "$ACTION_SH" ] && sed -i "s|^OPENLIST_BINARY=.*|OPENLIST_BINARY=\"$new\"|" "$ACTION_SH" 2>/dev/null || true
     OPENLIST_BINARY="$new"
+
+    # 迁移 = 移动：新副本校验通过后删掉旧二进制，避免同一份程序留两个位置
+    if [ -n "$old_src" ] && [ "$old_src" != "$new" ] && [ -f "$old_src" ]; then
+        ok=0
+        if have md5sum; then
+            [ "$(md5sum "$old_src" 2>/dev/null | awk '{print $1}')" = "$(md5sum "$new" 2>/dev/null | awk '{print $1}')" ] && ok=1
+        else
+            [ "$(stat -c %s "$old_src" 2>/dev/null)" = "$(stat -c %s "$new" 2>/dev/null)" ] && ok=1
+        fi
+        if [ "$ok" = "1" ]; then
+            rm -f "$old_src" 2>/dev/null
+            # 旧位置若是 <目录>/bin/xxx，且目录已空，顺手把空 bin 收掉
+            case "$(dirname "$old_src")" in
+                */bin) rmdir "$(dirname "$old_src")" 2>/dev/null || true ;;
+            esac
+            kv old_bin_removed "$old_src"
+        else
+            kv warn "旧二进制与新的不一致，已保留：$old_src"
+        fi
+    fi
 
     [ "$was_running" = "1" ] && cmd_start >/dev/null 2>&1
     kv new_bin "$new"
