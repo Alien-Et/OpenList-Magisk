@@ -76,6 +76,7 @@ jobs:
           cp -a OpenList-Magisk/. "$d/"
           rm -f "$d"/openlist-arm "$d"/openlist-arm64 "$d"/openlist-amd64 "$d"/openlist-386
           sed -i \
+            -e "s|^name=.*|name=OpenList(online)|" \
             -e "s|^version=.*|version=${{ env.VER }}|" \
             -e "s|^versionCode=.*|versionCode=${{ env.CODE }}|" \
             -e "s|^updateJson=.*|updateJson=https://raw.githubusercontent.com/Alien-Et/OpenList-Magisk/main/update.json|" \

@@ -189,6 +189,7 @@ jobs:
             cp -a OpenList-Magisk/. "$d/"
             rm -f "$d"/openlist-arm "$d"/openlist-arm64 "$d"/openlist-amd64 "$d"/openlist-386
             sed -i \
+              -e "s|^name=.*|name=OpenList(binary)|" \
               -e "s|^version=.*|version=$V|" \
               -e "s|^versionCode=.*|versionCode=$CODE|" \
               -e "s|^updateJson=.*|updateJson=$RAW/update-$arch.json|" \
