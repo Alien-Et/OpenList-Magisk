@@ -241,7 +241,7 @@ fi
 # late_start 阶段 /sdcard(FUSE) 往往还没挂载，数据目录在外部存储时提前 mkdir
 # 会直接失败退出，表现出来就是"重启后模块没有自动启动"
 ELAPSED=0
-MAX_WAIT=60
+MAX_WAIT=120
 while [ $ELAPSED -lt $MAX_WAIT ]; do
     if [ "$(getprop sys.boot_completed)" = "1" ]; then
         log "Android 系统启动完成"
@@ -259,17 +259,17 @@ fi
 case "$DATA_DIR" in
     /sdcard/*|/storage/*)
         WAIT_STORAGE=0
-        while [ $WAIT_STORAGE -lt 120 ]; do
+        while [ $WAIT_STORAGE -lt 180 ]; do
             if mkdir -p "$DATA_DIR" 2>/dev/null && [ -w "$DATA_DIR" ]; then
                 log "外部存储已就绪：$DATA_DIR"
                 break
             fi
-            log "等待外部存储就绪... ($WAIT_STORAGE/120 秒)"
+            log "等待外部存储就绪... ($WAIT_STORAGE/180 秒)"
             sleep 1
             WAIT_STORAGE=$((WAIT_STORAGE + 1))
         done
-        if [ $WAIT_STORAGE -ge 120 ]; then
-            log "错误: 外部存储 120 秒内仍不可写：$DATA_DIR"
+        if [ $WAIT_STORAGE -ge 180 ]; then
+            log "错误: 外部存储 180 秒内仍不可写：$DATA_DIR（/sdcard 可能未挂载）"
             exit 1
         fi
         ;;
