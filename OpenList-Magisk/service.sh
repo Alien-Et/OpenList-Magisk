@@ -230,10 +230,50 @@ update_module_prop_running() {
 
 log "启动 service.sh 于 $(date '+%Y-%m-%d %H:%M:%S')"
 
+# 早期日志：排查"重启后没自动起来"时，先看这两行路径对不对
+log "数据目录: $DATA_DIR ；二进制: $OPENLIST_BINARY"
+
 if ! command -v ip >/dev/null; then
-    log "错误: 未找到 ip 命令"
-    exit 1
+    log "警告: 未找到 ip 命令，IP 检测会失败，但服务仍会继续启动"
 fi
+
+# 先等启动阶段过去再碰数据目录：
+# late_start 阶段 /sdcard(FUSE) 往往还没挂载，数据目录在外部存储时提前 mkdir
+# 会直接失败退出，表现出来就是"重启后模块没有自动启动"
+ELAPSED=0
+MAX_WAIT=60
+while [ $ELAPSED -lt $MAX_WAIT ]; do
+    if [ "$(getprop sys.boot_completed)" = "1" ]; then
+        log "Android 系统启动完成"
+        break
+    fi
+    log "等待 Android 系统启动... ($ELAPSED/$MAX_WAIT 秒)"
+    sleep 1
+    ELAPSED=$((ELAPSED + 1))
+done
+if [ $ELAPSED -ge $MAX_WAIT ]; then
+    log "警告: 系统启动超时，继续尝试启动 openlist"
+fi
+
+# 数据目录在外部存储时再单独等它就绪（部分机型 boot_completed 之后 FUSE 才可用）
+case "$DATA_DIR" in
+    /sdcard/*|/storage/*)
+        WAIT_STORAGE=0
+        while [ $WAIT_STORAGE -lt 120 ]; do
+            if mkdir -p "$DATA_DIR" 2>/dev/null && [ -w "$DATA_DIR" ]; then
+                log "外部存储已就绪：$DATA_DIR"
+                break
+            fi
+            log "等待外部存储就绪... ($WAIT_STORAGE/120 秒)"
+            sleep 1
+            WAIT_STORAGE=$((WAIT_STORAGE + 1))
+        done
+        if [ $WAIT_STORAGE -ge 120 ]; then
+            log "错误: 外部存储 120 秒内仍不可写：$DATA_DIR"
+            exit 1
+        fi
+        ;;
+esac
 
 if [ ! -f "$OPENLIST_BINARY" ]; then
     log "错误: $OPENLIST_BINARY 不存在"
@@ -260,22 +300,6 @@ if [ ! -w "$DATA_DIR" ]; then
     }
 fi
 log "已创建或验证数据目录：$DATA_DIR"
-
-ELAPSED=0
-MAX_WAIT=60
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-    if [ "$(getprop sys.boot_completed)" = "1" ]; then
-        log "Android 系统启动完成"
-        break
-    fi
-    log "等待 Android 系统启动... ($ELAPSED/$MAX_WAIT 秒)"
-    sleep 1
-    ELAPSED=$((ELAPSED + 1))
-done
-
-if [ $ELAPSED -ge $MAX_WAIT ]; then
-    log "警告: 系统启动超时，继续尝试启动 openlist"
-fi
 
 log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
 

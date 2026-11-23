@@ -278,6 +278,8 @@
 
     filterChips('dataDirChips', kv.data_dir);
     filterChips('binChips', kv.bin);
+    // 版本列表可能是先从缓存渲染的，那时还不知道哪个是当前版本，补渲染一次
+    if (verRows) renderVersions(verRows);
   }
 
   function renderConfig(kv) {
@@ -368,7 +370,7 @@
      状态与路径胶囊（refresh）+ 路径体检（loadScan）+ 日志（loadLog） */
   function refreshAll() {
     return refresh()
-      .then(function () { return loadScan(); })
+      .then(function () { return loadScan(true); })
       .then(function () { return loadLog(); })
       .catch(function () {});
   }
@@ -508,7 +510,28 @@
     return n + ' B';
   }
 
-  function loadScan() {
+  // 路径体检要 find 整个数据目录，文件多的时候要好几秒；缓存 60 秒，
+  // 迁移/清理这类动作传 force=true 强制重扫
+  var SCAN_CACHE_KEY = 'ol_scan_v1';
+  var scanCache = { at: 0, bins: [], datas: [] };
+
+  function loadScan(force) {
+    // 跨会话先铺上次的结果（10 分钟内），再后台重扫，避免一打开就是"加载中…"
+    if (!force && !scanCache.at) {
+      try {
+        var c = JSON.parse(localStorage.getItem(SCAN_CACHE_KEY) || 'null');
+        if (c && c.bins && (Date.now() - c.at) < 600000) {
+          scanCache = { at: 0, bins: c.bins, datas: c.datas };
+          renderScanBins(c.bins);
+          renderScanData(c.datas);
+        }
+      } catch (e) {}
+    }
+    if (!force && scanCache.at && (Date.now() - scanCache.at) < 60000) {
+      renderScanBins(scanCache.bins);
+      renderScanData(scanCache.datas);
+      return Promise.resolve();
+    }
     return ctl('scan', 60000).then(function (r) {
       var bins = [], datas = [];
       (r.raw.stdout || '').split('\n').forEach(function (l) {
@@ -517,6 +540,10 @@
         if (p[0] === 'bin') bins.push({ path: p[1], size: p[2], cur: p[3] === '1' });
         else if (p[0] === 'data') datas.push({ path: p[1], files: p[2], mt: p[3], cur: p[4] === '1' });
       });
+      scanCache = { at: Date.now(), bins: bins, datas: datas };
+      try {
+        localStorage.setItem(SCAN_CACHE_KEY, JSON.stringify({ at: Date.now(), bins: bins, datas: datas }));
+      } catch (e) {}
       renderScanBins(bins);
       renderScanData(datas);
     }).catch(function (e) {
@@ -704,63 +731,94 @@
   }
 
   /* ---------- 所有版本（含回退） ---------- */
+  var VER_CACHE_KEY = 'ol_versions_v1';
+  var verRows = null;
+
+  function sortVersions(rows) {
+    // 版本号降序（HTML 兜底时没有日期，顺序也不保证）
+    rows.sort(function (a, b) {
+      var va = (a.split('|')[0] || '').replace(/^v/, '').split('.').map(Number);
+      var vb = (b.split('|')[0] || '').replace(/^v/, '').split('.').map(Number);
+      for (var i = 0; i < 3; i++) {
+        var x = va[i] || 0, y = vb[i] || 0;
+        if (x !== y) return y - x;
+      }
+      return 0;
+    });
+    return rows;
+  }
+
+  function renderVersions(rows) {
+    var box = $('verList');
+    if (!box || !rows || !rows.length) return;
+    var cur = state.version || '';
+    box.textContent = '';
+    rows.forEach(function (line) {
+      var p = line.split('|');
+      var ver = (p[0] || '').trim();
+      var date = (p[1] || '').trim();
+      if (!ver) return;
+      var row = document.createElement('div');
+      row.className = 'verrow';
+      var name = document.createElement('span');
+      name.className = 'ver';
+      name.textContent = ver;
+      var d = document.createElement('span');
+      d.className = 'date';
+      d.textContent = date || '-';
+      row.appendChild(name);
+      row.appendChild(d);
+      if (ver === cur) {
+        var tag = document.createElement('span');
+        tag.className = 'chip';
+        tag.textContent = '当前';
+        row.appendChild(tag);
+      } else {
+        var btn = document.createElement('button');
+        btn.className = 'mini';
+        btn.textContent = '安装';
+        btn.onclick = function () { installVersion(ver, btn); };
+        row.appendChild(btn);
+      }
+      box.appendChild(row);
+    });
+  }
+
   function loadVersions() {
     var box = $('verList');
-    if (!box) return;
-    box.textContent = '加载中…';
+    if (!box) return Promise.resolve();
+    // 先用上次的结果铺满，避免每次都盯着"加载中…"等 5MB 的 releases JSON
+    if (!verRows) {
+      try {
+        var c = JSON.parse(localStorage.getItem(VER_CACHE_KEY) || 'null');
+        if (c && c.rows && c.rows.length) {
+          verRows = c.rows;
+          renderVersions(verRows);
+        }
+      } catch (e) {}
+    }
+    if (!verRows) box.textContent = '加载中…';
     return ctl('versions', 60000).then(function (r) {
       var rows = (r.raw.stdout || '').split('\n').filter(function (l) {
         return l && l.indexOf('=') < 0;
       });
-      // 版本号降序（HTML 兜底时没有日期，顺序也不保证）
-      rows.sort(function (a, b) {
-        var va = (a.split('|')[0] || '').replace(/^v/, '').split('.').map(Number);
-        var vb = (b.split('|')[0] || '').replace(/^v/, '').split('.').map(Number);
-        for (var i = 0; i < 3; i++) {
-          var x = va[i] || 0, y = vb[i] || 0;
-          if (x !== y) return y - x;
-        }
-        return 0;
-      });
+      sortVersions(rows);
       if (!rows.length) {
-        var msg = r.kv.error || '没有获取到版本列表';
-        if (r.kv.debug) msg += '\n' + r.kv.debug;
-        box.textContent = msg;
+        // 有缓存就保留缓存，只有一次都没成功过才显示错误
+        if (!verRows) {
+          var msg = r.kv.error || '没有获取到版本列表';
+          if (r.kv.debug) msg += '\n' + r.kv.debug;
+          box.textContent = msg;
+        }
         return;
       }
-      var cur = state.version || '';
-      box.textContent = '';
-      rows.forEach(function (line) {
-        var p = line.split('|');
-        var ver = (p[0] || '').trim();
-        var date = (p[1] || '').trim();
-        if (!ver) return;
-        var row = document.createElement('div');
-        row.className = 'verrow';
-        var name = document.createElement('span');
-        name.className = 'ver';
-        name.textContent = ver;
-        var d = document.createElement('span');
-        d.className = 'date';
-        d.textContent = date || '-';
-        row.appendChild(name);
-        row.appendChild(d);
-        if (ver === cur) {
-          var tag = document.createElement('span');
-          tag.className = 'chip';
-          tag.textContent = '当前';
-          row.appendChild(tag);
-        } else {
-          var btn = document.createElement('button');
-          btn.className = 'mini';
-          btn.textContent = '安装';
-          btn.onclick = function () { installVersion(ver, btn); };
-          row.appendChild(btn);
-        }
-        box.appendChild(row);
-      });
+      verRows = rows;
+      try {
+        localStorage.setItem(VER_CACHE_KEY, JSON.stringify({ at: Date.now(), rows: rows }));
+      } catch (e) {}
+      renderVersions(rows);
     }).catch(function (e) {
-      box.textContent = '获取失败：' + e;
+      if (!verRows) box.textContent = '获取失败：' + e;
     });
   }
 
@@ -1155,14 +1213,16 @@
       });
     };
 
-    refresh()
-      .then(function () { return checkUpdate(true); })
-      .then(loadScan)
-      .then(loadVersions)
-      .then(loadConfig)
-      .then(loadLog)
-      .then(loadStorages)
-      .then(loadTasks);
+    // 各区块并行加载：串行的话 scan + versions + 存储/任务加起来能拖到几十秒，
+    // 页面上就一直挂着"加载中…"
+    refresh();
+    checkUpdate(true);
+    loadScan();
+    loadVersions();
+    loadConfig();
+    loadLog();
+    loadStorages();
+    loadTasks();
   }
 
   if (document.readyState === 'loading') {

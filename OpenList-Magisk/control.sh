@@ -137,11 +137,11 @@ gh_api() { # url outfile
     : > "$out" 2>/dev/null
     if have curl; then
         if [ -n "$GH_TOKEN" ]; then
-            code="$(curl -sSL -m 30 -o "$out" -w '%{http_code}' \
+            code="$(curl -sSL --compressed -m 30 -o "$out" -w '%{http_code}' \
                 -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" \
                 -H "Authorization: Bearer $GH_TOKEN" "$url" 2>/dev/null)" || code=""
         else
-            code="$(curl -sSL -m 30 -o "$out" -w '%{http_code}' \
+            code="$(curl -sSL --compressed -m 30 -o "$out" -w '%{http_code}' \
                 -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" \
                 "$url" 2>/dev/null)" || code=""
         fi
