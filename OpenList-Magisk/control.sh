@@ -36,6 +36,7 @@ TMP_DIR="${TMP_DIR:-/data/local/tmp}"
 
 # GitHub 官方接口：版本列表只走 api.github.com，不再套国内代理（代理不转发 API，反而全是 403）
 GH_API="https://api.github.com/repos/OpenListTeam/OpenList"
+GH_DL="https://github.com/OpenListTeam/OpenList"
 API_URL="$GH_API/releases/latest"
 RELEASES_URL="$GH_API/releases?per_page=100"
 RELEASES_CACHE="$TMP_DIR/openlist_releases.cache"
@@ -137,11 +138,11 @@ gh_api() { # url outfile
     : > "$out" 2>/dev/null
     if have curl; then
         if [ -n "$GH_TOKEN" ]; then
-            code="$(curl -sSL --compressed -m 30 -o "$out" -w '%{http_code}' \
+            code="$(curl -sSL --compressed --connect-timeout 8 -m 20 -o "$out" -w '%{http_code}' \
                 -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" \
                 -H "Authorization: Bearer $GH_TOKEN" "$url" 2>/dev/null)" || code=""
         else
-            code="$(curl -sSL --compressed -m 30 -o "$out" -w '%{http_code}' \
+            code="$(curl -sSL --compressed --connect-timeout 8 -m 20 -o "$out" -w '%{http_code}' \
                 -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" \
                 "$url" 2>/dev/null)" || code=""
         fi
@@ -178,6 +179,11 @@ gh_api_error() { # code bodyfile
     esac
 }
 
+# 缓存列表里的最新版本（列表按 GitHub 顺序，第一条就是最新）
+cache_latest_tag() {
+    sed -n 's/^item=//p' "$RELEASES_CACHE" 2>/dev/null | head -n 1 | cut -d'|' -f1
+}
+
 # 从 API JSON 里按出现顺序配对 tag_name / published_at
 # 每个 release 对象里 tag_name 在前、published_at 在后，draft 的 published_at 为 null，
 # 靠 "新 TAG 覆盖旧 TAG" 自愈，不会像分别过滤再 paste 那样整体错位
@@ -196,7 +202,7 @@ http_download() { # url out
     for p in "" "$GH_PROXY" $PROXIES; do
         if [ -z "$p" ] && [ "${SKIP_DIRECT:-0}" = "1" ]; then continue; fi
         if have curl; then
-            if curl -fL --connect-timeout 10 -m 1800 -o "$out" "${p}${url}" 2>/dev/null && [ -s "$out" ]; then
+            if curl -fL --connect-timeout 8 -m 1800 -o "$out" "${p}${url}" 2>/dev/null && [ -s "$out" ]; then
                 return 0
             fi
         elif [ -n "$BB" ]; then
@@ -334,13 +340,27 @@ pick_asset() {
 }
 
 cmd_check() {
-    local f code tag cur msg
+    local f code tag cur msg cached
     f="$TMP_DIR/.latest.$$"
     code="$(gh_api "$API_URL" "$f")"
     if [ "$code" != "200" ]; then
         msg="$(gh_api_error "$code" "$f")"
         kv debug "HTTP $code $(head -c 160 "$f" 2>/dev/null | tr '\n' ' ')"
         rm -f "$f"
+        # API 不可达时用缓存里的最新版本兜底
+        cached="$(cache_latest_tag)"
+        if [ -n "$cached" ]; then
+            cur="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
+            kv current "${cur:-unknown}"
+            kv latest "$cached"
+            kv asset "$(pick_asset)"
+            kv abi "$(getprop ro.product.cpu.abi 2>/dev/null)"
+            kv up_to_date "$([ "$cur" = "$cached" ] && echo 1 || echo 0)"
+            kv stale 1
+            kv error "$msg"
+            kv result ok
+            return 0
+        fi
         fail "$msg"
     fi
     tag="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -n 1)"
@@ -358,6 +378,8 @@ cmd_check() {
 # 列出所有 release（含历史），供回退选择。输出 item=版本|发布日期
 # 列出所有 release（含历史），供回退选择。输出 item=版本|发布日期
 # 只走 GitHub 官方 API：per_page=100 分页翻到底，不再套国内代理，也不再用 HTML 兜底
+# 列出所有 release（含历史），供回退选择。输出 item=版本|发布日期
+# 只走 GitHub 官方 API：per_page=100 分页翻到底；API 不可达时退回上次成功的结果
 cmd_versions() {
     local now ts page code n f list msg
     now="$(date +%s 2>/dev/null || echo 0)"
@@ -372,6 +394,7 @@ cmd_versions() {
     f="$TMP_DIR/.rel_page.$$"
     list="$TMP_DIR/.rel_items.$$"
     : > "$list" 2>/dev/null
+    msg=""
 
     page=1
     while [ "$page" -le 10 ]; do
@@ -379,8 +402,7 @@ cmd_versions() {
         if [ "$code" != "200" ]; then
             msg="$(gh_api_error "$code" "$f")"
             kv debug "HTTP $code $(head -c 160 "$f" 2>/dev/null | tr '\n' ' ')"
-            rm -f "$f" "$list"
-            fail "$msg"
+            break
         fi
         # 注意：API 返回是压缩成一行的 JSON，grep -c 只数行数（恒为 1），
         # 必须数出现次数，否则永远不满 100、翻不到第二页
@@ -394,25 +416,37 @@ cmd_versions() {
     done
     rm -f "$f"
 
-    grep -E '^v[0-9]' "$list" > "$list.ok" 2>/dev/null
-    if [ ! -s "$list.ok" ]; then
-        rm -f "$list" "$list.ok"
-        fail "解析版本列表失败（GitHub 返回里没有可用的 release）"
+    if [ -z "$msg" ]; then
+        grep -E '^v[0-9]' "$list" > "$list.ok" 2>/dev/null
+        if [ -s "$list.ok" ]; then
+            {
+                echo "ts=$now"
+                while IFS= read -r line; do
+                    echo "item=$line"
+                done < "$list.ok"
+            } > "$RELEASES_CACHE.tmp" 2>/dev/null
+            mv -f "$RELEASES_CACHE.tmp" "$RELEASES_CACHE" 2>/dev/null || true
+            chmod 600 "$RELEASES_CACHE" 2>/dev/null || true
+            # 回显本次抓到的列表，而不是再读缓存：缓存写失败也不影响本次结果
+            sed -n 's/^item=//p' "$list.ok"
+            rm -f "$list" "$list.ok"
+            kv result ok
+            return 0
+        fi
+        msg="解析版本列表失败（GitHub 返回里没有可用的 release）"
     fi
-
-    {
-        echo "ts=$now"
-        while IFS= read -r line; do
-            echo "item=$line"
-        done < "$list.ok"
-    } > "$RELEASES_CACHE.tmp" 2>/dev/null
-    mv -f "$RELEASES_CACHE.tmp" "$RELEASES_CACHE" 2>/dev/null || true
-    chmod 600 "$RELEASES_CACHE" 2>/dev/null || true
-
-    # 回显本次抓到的列表，而不是再读缓存：缓存写失败也不影响本次结果
-    sed -n 's/^item=//p' "$list.ok"
     rm -f "$list" "$list.ok"
-    kv result ok
+
+    # 无代理时 api.github.com 往往不可达：退回上次成功的列表，
+    # 至少还能看到版本并点安装（下载走 github.com 镜像）
+    if [ -s "$RELEASES_CACHE" ] && grep -q '^item=' "$RELEASES_CACHE" 2>/dev/null; then
+        sed -n 's/^item=//p' "$RELEASES_CACHE"
+        kv stale 1
+        kv error "$msg"
+        kv result ok
+        return 0
+    fi
+    fail "$msg"
 }
 
 # ---------- 路径体检 ----------
@@ -513,7 +547,7 @@ cmd_use_data() {
 }
 
 cmd_update() {
-    local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code want_tag="" api code="" jsonf="" msg=""
+    local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code want_tag="" api code="" jsonf="" msg="" DL_PID="" DL_RC=0 sz=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --force) force=1 ;;
@@ -536,18 +570,40 @@ cmd_update() {
         progress resolve "获取最新版本"
     fi
     local json
+    json=""
+    url=""
+    md5url=""
     jsonf="$TMP_DIR/.upd_api.$$"
     code="$(gh_api "$api" "$jsonf")"
-    if [ "$code" != "200" ]; then
+    if [ "$code" = "200" ]; then
+        json="$(cat "$jsonf" 2>/dev/null)"
+        tag="$(echo "$json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+        url="$(echo "$json" | tr ',' '\n' | grep -o 'https://[^"]*'"$asset" | head -n 1)"
+        md5url="$(echo "$json" | tr ',' '\n' | grep -o 'https://[^"]*md5-android.txt' | head -n 1)"
+        kv stale 0
+    else
         msg="$(gh_api_error "$code" "$jsonf")"
         kv debug "HTTP $code $(head -c 160 "$jsonf" 2>/dev/null | tr '\n' ' ')"
-        rm -f "$jsonf"
-        fail "$msg"
+        # API 不通（国内直连常见）时不用放弃：release 资产路径是固定的，
+        # 直接拼 github.com 的下载地址，交给 http_download 走镜像
+        [ -z "$want_tag" ] && want_tag="$(cache_latest_tag)"
+        if [ -n "$want_tag" ]; then
+            tag="$want_tag"
+            kv stale 1
+            kv note "GitHub API 不可达，按固定路径下载 $tag"
+        else
+            rm -f "$jsonf"
+            fail "$msg"
+        fi
     fi
-    json="$(cat "$jsonf" 2>/dev/null)"
     rm -f "$jsonf"
-    tag="$(echo "$json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+
     [ -n "$tag" ] || fail "解析最新版本失败"
+    if [ -z "$url" ]; then
+        url="$GH_DL/releases/download/$tag/$asset"
+        [ -n "$md5url" ] || md5url="$GH_DL/releases/download/$tag/md5-android.txt"
+    fi
+
     cur="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
     if [ "$cur" = "$tag" ] && [ "$force" != "1" ]; then
         kv current "$cur"
@@ -557,18 +613,26 @@ cmd_update() {
         return 0
     fi
 
-    url="$(echo "$json" | tr ',' '\n' | grep -o 'https://[^"]*'"$asset" | head -n 1)"
-    [ -n "$url" ] || fail "未找到资产: $asset"
-
     work="$TMP_DIR/openlist_update.$$"
     mkdir -p "$work" || fail "无法创建临时目录"
     tgz="$work/$asset"
 
-    progress download "$asset"
-    http_download "$url" "$tgz" || { rm -rf "$work"; fail "下载失败（直连和代理都不可用）"; }
+    progress download "0 MB / $asset"
+    # 后台每 2 秒把已下载大小写进 progress 文件，UI 靠轮询它显示进度
+    ( while [ ! -f "$work/.dl.done" ]; do
+          sz="$(stat -c %s "$tgz" 2>/dev/null || echo 0)"
+          echo "stage=download" > "$PROGRESS_FILE" 2>/dev/null
+          echo "detail=$((sz / 1048576)) MB / $asset" >> "$PROGRESS_FILE" 2>/dev/null
+          sleep 2
+      done ) &
+    DL_PID=$!
+    http_download "$url" "$tgz"
+    DL_RC=$?
+    : > "$work/.dl.done" 2>/dev/null
+    wait "$DL_PID" 2>/dev/null
+    [ "$DL_RC" = "0" ] || { rm -rf "$work"; fail "下载失败（直连和代理都不可用）：$url"; }
 
     # md5 校验：md5 文件缺失则跳过（release 偶发不带），校验值不匹配则中止
-    md5url="$(echo "$json" | tr ',' '\n' | grep -o 'https://[^"]*md5-android.txt' | head -n 1)"
     if [ -n "$md5url" ] && http_download "$md5url" "$work/md5.txt"; then
         want="$(awk -v f="$asset" '{n=$2; sub(/^\.\//,"",n); if (n==f) {print $1; exit}}' "$work/md5.txt" 2>/dev/null)"
         if [ -n "$want" ]; then

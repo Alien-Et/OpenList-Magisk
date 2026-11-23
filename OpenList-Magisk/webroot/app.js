@@ -418,10 +418,10 @@
       b.disabled = true;
       $('updateHint').textContent = '正在查询 GitHub…';
     }
-    return ctl('check', 60000).then(function (r) {
+    return ctl('check', 30000).then(function (r) {
       var kv = r.kv;
       if (kv.result !== 'ok') {
-        $('updateHint').textContent = '检查更新失败';
+        $('updateHint').textContent = '检查更新失败：' + (kv.error || 'GitHub 不可达');
         if (!silent) toast(kv.error || '检查失败', true);
         return;
       }
@@ -431,7 +431,11 @@
       var up = kv.up_to_date === '1';
       $('updateBtn').disabled = !hasKsu || up;
       $('updateBtn').textContent = up ? '已是最新' : '立即更新';
-      $('updateHint').textContent = up ? '当前已是最新版本。' : '发现新版本，可直接更新。';
+      if (kv.stale === '1') {
+        $('updateHint').textContent = 'GitHub 不可达，显示的是缓存版本；下载会走镜像。';
+      } else {
+        $('updateHint').textContent = up ? '当前已是最新版本。' : '发现新版本，可直接更新。';
+      }
     }).catch(function (e) {
       if (!silent) toast('检查失败: ' + e, true);
     }).finally(function () { b.disabled = !hasKsu; });
@@ -798,7 +802,7 @@
       } catch (e) {}
     }
     if (!verRows) box.textContent = '加载中…';
-    return ctl('versions', 60000).then(function (r) {
+    return ctl('versions', 45000).then(function (r) {
       var rows = (r.raw.stdout || '').split('\n').filter(function (l) {
         return l && l.indexOf('=') < 0;
       });
@@ -817,6 +821,12 @@
         localStorage.setItem(VER_CACHE_KEY, JSON.stringify({ at: Date.now(), rows: rows }));
       } catch (e) {}
       renderVersions(rows);
+      if (r.kv.stale === '1') {
+        var note = document.createElement('div');
+        note.className = 'hint';
+        note.textContent = '离线缓存：' + (r.kv.error || 'GitHub 不可达') + '（点刷新重试）';
+        box.appendChild(note);
+      }
     }).catch(function (e) {
       if (!verRows) box.textContent = '获取失败：' + e;
     });
