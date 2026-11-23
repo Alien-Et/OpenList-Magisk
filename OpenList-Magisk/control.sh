@@ -578,7 +578,12 @@ cmd_update() {
 }
 
 cmd_logs() {
-    tail -n "${1:-120}" "$LOG_FILE" 2>/dev/null || echo "(无日志)"
+    local n="${1:-120}" which="${2:-service}" f
+    case "$which" in
+        openlist|app) f="$MODDIR/openlist.log" ;;
+        *) f="$LOG_FILE" ;;
+    esac
+    tail -n "$n" "$f" 2>/dev/null || echo "(无日志)"
 }
 
 # ---------- 配置 ----------

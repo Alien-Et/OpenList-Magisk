@@ -11,6 +11,7 @@ DATA_DIR="__PLACEHOLDER_DATA_DIR__"
 OPENLIST_BINARY="__PLACEHOLDER_BINARY_PATH__"
 MODULE_PROP_FILE="$MODDIR/module.prop"
 LOG_FILE="$MODDIR/service.log"
+OPENLIST_LOG="$MODDIR/openlist.log"
 TEMP_IP_FILE="$MODDIR/ip_result.tmp"
 TEMP_PORT_FILE="$MODDIR/port_result.tmp"
 
@@ -278,9 +279,16 @@ fi
 
 log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
 
+# 程序自身的 stdout/stderr 落到 openlist.log（1MB 轮转）。
+# 这些内容不会进 service.log，但端口占用、驱动加载失败、数据库锁冲突
+# 这类只在运行中出现一次的报错只有在这里才看得到。
+if [ -f "$OPENLIST_LOG" ] && [ "$(stat -c %s "$OPENLIST_LOG" 2>/dev/null || echo 0)" -gt 1048576 ]; then
+    mv -f "$OPENLIST_LOG" "$OPENLIST_LOG.bak" 2>/dev/null
+fi
+
 # 不预设 admin 密码：OpenList v4.2.10 起由网页安装向导创建管理员
 # （POST /api/public/init/setup），首次打开 http://IP:PORT 会引导设置账号密码。
-$OPENLIST_BINARY server --data "$DATA_DIR" &
+$OPENLIST_BINARY server --data "$DATA_DIR" >> "$OPENLIST_LOG" 2>&1 </dev/null &
 OPENLIST_PID=$!
 
 if ps -p $OPENLIST_PID >/dev/null || pgrep -f "$OPENLIST_BINARY server --data" >/dev/null; then

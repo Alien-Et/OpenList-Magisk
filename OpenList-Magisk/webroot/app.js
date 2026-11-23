@@ -1059,15 +1059,18 @@
   }
 
   /* ---------- 日志 ---------- */
+  var logWhich = 'service';
+
   function loadLog() {
-    return sh("sh '" + CONTROL + "' logs 200", 20000).then(function (r) {
+    return sh("sh '" + CONTROL + "' logs 200 " + logWhich, 20000).then(function (r) {
       $('logBox').textContent = r.stdout || '(空)';
     });
   }
 
   function clearLog() {
     if (!hasKsu) return toast('没有 root 接口', true);
-    sh(': > ' + MODDIR + '/service.log', 10000).then(function () {
+    var f = logWhich === 'openlist' ? 'openlist.log' : 'service.log';
+    sh(': > ' + MODDIR + '/' + f, 10000).then(function () {
       $('logBox').textContent = '(空)';
       toast('日志已清空');
     });
@@ -1079,6 +1082,15 @@
     applyTheme();
     initSelects();
     initPresets();
+
+    document.querySelectorAll('#logTabs .chip-btn').forEach(function (b) {
+      b.onclick = function () {
+        logWhich = b.dataset.log;
+        document.querySelectorAll('#logTabs .chip-btn').forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        loadLog();
+      };
+    });
     $('modeChip').textContent = hasKsu ? 'KernelSU / APatch' : '无 root 接口';
     ['toggleBtn', 'restartBtn', 'checkBtn', 'updateBtn', 'saveCfgBtn', 'pwdBtn', 'migrateDataBtn', 'migrateBinBtn', 'fixPathsBtn']
       .forEach(function (id) { $(id).disabled = true; });
