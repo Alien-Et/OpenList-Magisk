@@ -150,7 +150,10 @@ WebUI 里点更新走的是 `update-bg`（后台跑）+ `update-status`（轮询
 - 问题反馈：[GitHub Issues](https://github.com/Alien-Et/OpenList-Magisk/issues)
 
 ## 许可证
-本项目基于 [MIT 许可证](LICENSE) 发布。
+模块自身的脚本、WebUI 与文档基于 [MIT 许可证](../LICENSE) 发布。
+
+模块内打包的 `openlist` 二进制来自 [OpenList 官方 Release](https://github.com/OpenListTeam/OpenList/releases)，遵循上游 **AGPL-3.0** 许可证，对应源码见 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)。
+
 ## 文档
 
 - [01. 整体架构](../docs/01.整体架构.md)
