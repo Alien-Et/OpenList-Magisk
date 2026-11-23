@@ -267,7 +267,7 @@ if [ $ELAPSED -ge $MAX_WAIT ]; then
 fi
 
 log "启动 OpenList: $OPENLIST_BINARY server --data $DATA_DIR"
-$OPENLIST_BINARY server --data "$DATA_DIR" &
+$OPENLIST_BINARY server --data "$DATA_DIR" >/dev/null 2>&1 &
 OPENLIST_PID=$!
 
 if ps -p $OPENLIST_PID >/dev/null || pgrep -f "$OPENLIST_BINARY server --data" >/dev/null; then
