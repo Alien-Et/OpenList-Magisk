@@ -547,7 +547,7 @@ cmd_use_data() {
 }
 
 cmd_update() {
-    local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code want_tag="" api code="" jsonf="" msg="" DL_PID="" DL_RC=0 sz=0
+    local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code want_tag="" api code="" jsonf="" msg="" cached="" DL_PID="" DL_RC=0 sz=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --force) force=1 ;;
@@ -562,46 +562,46 @@ cmd_update() {
     api="$API_URL"
     if [ -n "$want_tag" ]; then
         case "$want_tag" in
-            v[0-9]*) api="https://api.github.com/repos/OpenListTeam/OpenList/releases/tags/$want_tag" ;;
+            v[0-9]*) ;;
             *) fail "版本号格式不正确（应形如 v4.2.9）" ;;
         esac
-        progress resolve "获取 $want_tag"
+        # 指定版本（回退/切换）：release 资产路径是固定的，
+        # 完全不需要 API —— 国内直连 api.github.com 经常不通，没必要先撞一次墙
+        tag="$want_tag"
+        url="$GH_DL/releases/download/$tag/$asset"
+        md5url="$GH_DL/releases/download/$tag/md5-android.txt"
+        progress resolve "准备 $tag"
+        kv api_skipped 1
     else
         progress resolve "获取最新版本"
-    fi
-    local json
-    json=""
-    url=""
-    md5url=""
-    jsonf="$TMP_DIR/.upd_api.$$"
-    code="$(gh_api "$api" "$jsonf")"
-    if [ "$code" = "200" ]; then
-        json="$(cat "$jsonf" 2>/dev/null)"
-        tag="$(echo "$json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
-        url="$(echo "$json" | tr ',' '\n' | grep -o 'https://[^"]*'"$asset" | head -n 1)"
-        md5url="$(echo "$json" | tr ',' '\n' | grep -o 'https://[^"]*md5-android.txt' | head -n 1)"
-        kv stale 0
-    else
-        msg="$(gh_api_error "$code" "$jsonf")"
-        kv debug "HTTP $code $(head -c 160 "$jsonf" 2>/dev/null | tr '\n' ' ')"
-        # API 不通（国内直连常见）时不用放弃：release 资产路径是固定的，
-        # 直接拼 github.com 的下载地址，交给 http_download 走镜像
-        [ -z "$want_tag" ] && want_tag="$(cache_latest_tag)"
-        if [ -n "$want_tag" ]; then
-            tag="$want_tag"
-            kv stale 1
-            kv note "GitHub API 不可达，按固定路径下载 $tag"
+        jsonf="$TMP_DIR/.upd_api.$$"
+        code="$(gh_api "$API_URL" "$jsonf")"
+        if [ "$code" = "200" ]; then
+            json="$(cat "$jsonf" 2>/dev/null)"
+            tag="$(echo "$json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+            url="$(echo "$json" | tr ',' '\n' | grep -o 'https://[^"]*'"$asset" | head -n 1)"
+            md5url="$(echo "$json" | tr ',' '\n' | grep -o 'https://[^"]*md5-android.txt' | head -n 1)"
+            kv stale 0
         else
-            rm -f "$jsonf"
-            fail "$msg"
+            msg="$(gh_api_error "$code" "$jsonf")"
+            kv debug "HTTP $code $(head -c 160 "$jsonf" 2>/dev/null | tr '\n' ' ')"
+            # API 不通时用缓存里的最新版本，走固定路径下载
+            cached="$(cache_latest_tag)"
+            if [ -n "$cached" ]; then
+                tag="$cached"
+                kv stale 1
+                kv note "GitHub API 不可达，按固定路径下载 $tag"
+            else
+                rm -f "$jsonf"
+                fail "$msg"
+            fi
         fi
-    fi
-    rm -f "$jsonf"
-
-    [ -n "$tag" ] || fail "解析最新版本失败"
-    if [ -z "$url" ]; then
-        url="$GH_DL/releases/download/$tag/$asset"
-        [ -n "$md5url" ] || md5url="$GH_DL/releases/download/$tag/md5-android.txt"
+        rm -f "$jsonf"
+        [ -n "$tag" ] || fail "解析最新版本失败"
+        if [ -z "$url" ]; then
+            url="$GH_DL/releases/download/$tag/$asset"
+            md5url="$GH_DL/releases/download/$tag/md5-android.txt"
+        fi
     fi
 
     cur="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
