@@ -1,7 +1,12 @@
 # OpenList Magisk/KernelSU/APatch 模块
 
-[![Release](https://img.shields.io/github/v/release/Alien-Et/OpenList-Magisk)](https://github.com/Alien-Et/OpenList-Magisk/releases)
-[![License](https://img.shields.io/github/license/Alien-Et/OpenList-Magisk)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/LICENSE)
+[![Release](https://img.shields.io/github/v/release/Alien-Et/OpenList-Magisk?label=release&sort=semver)](https://github.com/Alien-Et/OpenList-Magisk/releases)
+[![License](https://img.shields.io/github/license/Alien-Et/OpenList-Magisk?label=license)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/LICENSE)
+[![Bundled binary](https://img.shields.io/badge/bundled%20openlist-AGPL--3.0-orange)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/THIRD-PARTY.md)
+[![Arch](https://img.shields.io/badge/arch-arm%20%7C%20arm64-blueviolet)](#系统要求)
+[![Platform](https://img.shields.io/badge/platform-Magisk%20%7C%20KernelSU%20%7C%20APatch-success)](#框架兼容性)
+
+> **许可提示**：本模块的脚本、WebUI 与文档使用 **MIT** 许可；安装包内打包的 OpenList 可执行文件（`openlist-arm` / `openlist-arm64`）来自上游 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)，使用 **AGPL-3.0**。两者许可不同，分发前请先看 [THIRD-PARTY.md](THIRD-PARTY.md)。
 
 OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件服务器集成到 Android 系统中，通过 Magisk、KernelSU 或 APatch 以系统化方式运行，支持 ARM 和 ARM64 架构。
 
@@ -172,6 +177,7 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - **优化** 无代理环境：API 失败时版本列表/最新版本用缓存兜底（`stale=1`），指定版本安装跳过 API 直接拼下载地址走镜像；下载过程显示「已下载 N MB」
 - **优化** WebUI 打开速度：各区块并行加载、GitHub API 走 gzip（5.39 MB → 412 KB）、路径体检与版本列表本地缓存
 - **新增** 安装界面可选数据迁移：更新安装时检测到旧数据且换了目录，会多一次音量键确认（音量+ 迁移并删源 / 音量- 跳过，90 秒无操作按跳过）；校验不过则旧数据原样保留
+- **新增** 安装包内随附 `LICENSE`（MIT 副本）、`LICENSE-AGPL-3.0.txt`（AGPL-3.0 全文）与 `THIRD-PARTY.md`（第三方组件说明）；README 顶部补许可提示，并把徽章补齐为 release / license / bundled binary / arch / platform
 
 > 本次更新只测试到「WebUI 能正常用」这一步，没有做完整回归，可能还有没挖出来的隐藏 bug。遇到问题请到仓库提 issue。
 
@@ -216,6 +222,8 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 模块自身的脚本、WebUI 与文档基于 [MIT 许可证](LICENSE) 发布。
 
 模块内打包的 `openlist` 二进制来自 [OpenList 官方 Release](https://github.com/OpenListTeam/OpenList/releases)，遵循上游 **AGPL-3.0** 许可证，对应源码见 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)。
+
+安装包内随附 `LICENSE`（MIT 副本）、`LICENSE-AGPL-3.0.txt`（AGPL-3.0 全文）与 `THIRD-PARTY.md`（第三方组件说明），装到设备上也能随时查阅。
 
 ## 文档
 
