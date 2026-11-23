@@ -6,6 +6,8 @@
 [![Arch](https://img.shields.io/badge/arch-arm%20%7C%20arm64-blueviolet)](#系统要求)
 [![Platform](https://img.shields.io/badge/platform-Magisk%20%7C%20KernelSU%20%7C%20APatch-success)](#系统要求)
 
+> 第一次用？先看 **[安装包与更新通道说明](https://github.com/Alien-Et/OpenList-Magisk/discussions/39)** —— 5 个包怎么选、两条更新通道有什么区别，都在那里。
+
 > **许可提示**：本模块的脚本、WebUI 与文档使用 **MIT** 许可（见 [LICENSE](LICENSE)）；安装包内打包的 OpenList 可执行文件（`openlist-arm` / `openlist-arm64`）来自上游 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)，使用 **AGPL-3.0**（见 [THIRD-PARTY.md](THIRD-PARTY.md) 与 [LICENSE-AGPL-3.0.txt](LICENSE-AGPL-3.0.txt)）。
 
 OpenList 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) 文件服务器集成到 Android 系统中，通过 Magisk、KernelSU 或 APatch 以系统化方式运行，支持 ARM 和 ARM64 架构。
