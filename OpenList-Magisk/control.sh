@@ -33,9 +33,18 @@ LOG_FILE="$MODDIR/service.log"
 PROGRESS_FILE="${PROGRESS_FILE:-/data/local/tmp/openlist_update.progress}"
 TMP_DIR="${TMP_DIR:-/data/local/tmp}"
 
-API_URL="https://api.github.com/repos/OpenListTeam/OpenList/releases/latest"
-RELEASES_URL="https://api.github.com/repos/OpenListTeam/OpenList/releases?per_page=100"
+# GitHub 官方接口：版本列表只走 api.github.com，不再套国内代理（代理不转发 API，反而全是 403）
+GH_API="https://api.github.com/repos/OpenListTeam/OpenList"
+API_URL="$GH_API/releases/latest"
+RELEASES_URL="$GH_API/releases?per_page=100"
 RELEASES_CACHE="$TMP_DIR/openlist_releases.cache"
+# 可选：把 PAT 写进 <模块目录>/.github_token 可把额度从 60 次/小时提到 5000
+GH_TOKEN_FILE="$MODDIR/.github_token"
+GH_TOKEN="${GH_TOKEN:-}"
+if [ -z "$GH_TOKEN" ] && [ -f "$GH_TOKEN_FILE" ]; then
+    GH_TOKEN="$(sed -n '1p' "$GH_TOKEN_FILE" 2>/dev/null | tr -d '\r\n ')"
+fi
+# 下载二进制仍可用代理（代理只拼 github.com 资源）
 GH_PROXY="${GH_PROXY:-}"
 PROXIES="https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/"
 
@@ -120,19 +129,64 @@ http_get() { # url [timeout]
     return 1
 }
 
-# GitHub API 要求带 User-Agent，busybox wget 默认 UA 可能被 403
-http_get_ua() { # url [timeout]
-    local t="${2:-20}"
+# GitHub 官方 API 请求：body 落文件，stdout 回 HTTP 码（拿不到码时为 000）
+# 用 -o/-O 而不是管道，才能同时拿到状态码和响应体；4xx 也保留 body 用于判断限流
+gh_api() { # url outfile
+    local url="$1" out="$2" code=""
+    : > "$out" 2>/dev/null
     if have curl; then
-        curl -fsSL -m "$t" -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" "$1" 2>/dev/null && return 0
+        if [ -n "$GH_TOKEN" ]; then
+            code="$(curl -sSL -m 30 -o "$out" -w '%{http_code}' \
+                -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer $GH_TOKEN" "$url" 2>/dev/null)" || code=""
+        else
+            code="$(curl -sSL -m 30 -o "$out" -w '%{http_code}' \
+                -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" \
+                "$url" 2>/dev/null)" || code=""
+        fi
+    elif [ -n "$BB" ]; then
+        if [ -n "$GH_TOKEN" ]; then
+            "$BB" wget -q -T 30 -O "$out" --header="User-Agent: OpenList-Magisk" \
+                --header="Accept: application/vnd.github+json" \
+                --header="Authorization: Bearer $GH_TOKEN" "$url" 2>/dev/null && code="200"
+        else
+            "$BB" wget -q -T 30 -O "$out" --header="User-Agent: OpenList-Magisk" \
+                --header="Accept: application/vnd.github+json" "$url" 2>/dev/null && code="200"
+        fi
+    elif have wget; then
+        wget -q -T 30 -O "$out" --header="User-Agent: OpenList-Magisk" "$url" 2>/dev/null && code="200"
     fi
-    if [ -n "$BB" ]; then
-        "$BB" wget -q -T "$t" -O - --header="User-Agent: OpenList-Magisk" "$1" 2>/dev/null && return 0
-    fi
-    if have wget; then
-        wget -q -T "$t" -O - --header="User-Agent: OpenList-Magisk" "$1" 2>/dev/null && return 0
-    fi
-    return 1
+    [ -n "$code" ] || code="000"
+    printf '%s' "$code"
+}
+
+# 把 HTTP 码翻译成人话（限流要能和"没网"区分开）
+gh_api_error() { # code bodyfile
+    case "$1" in
+        403|429)
+            if grep -qi 'rate limit' "$2" 2>/dev/null; then
+                printf 'GitHub API 限流（未认证 60 次/小时）。稍后重试，或在 %s 写入 token 提高到 5000' "$GH_TOKEN_FILE"
+            else
+                printf 'GitHub API 拒绝访问（HTTP %s）' "$1"
+            fi
+            ;;
+        401) printf 'GitHub Token 无效或过期（HTTP 401），检查 %s' "$GH_TOKEN_FILE" ;;
+        404) printf 'GitHub 上找不到该 release（HTTP 404）' ;;
+        000) printf '无法访问 GitHub API（网络不通或超时）' ;;
+        *) printf 'GitHub API 返回异常（HTTP %s）' "$1" ;;
+    esac
+}
+
+# 从 API JSON 里按出现顺序配对 tag_name / published_at
+# 每个 release 对象里 tag_name 在前、published_at 在后，draft 的 published_at 为 null，
+# 靠 "新 TAG 覆盖旧 TAG" 自愈，不会像分别过滤再 paste 那样整体错位
+parse_releases() {
+    sed -e 's/"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\nTAG \1\n/g' \
+        -e 's/"published_at"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\nDATE \1\n/g' \
+    | awk '
+        $1 == "TAG"  { tag = $2 }
+        $1 == "DATE" { if (tag != "") { printf "%s|%.10s\n", tag, $2; tag = "" } }
+      '
 }
 
 http_download() { # url out
@@ -279,9 +333,17 @@ pick_asset() {
 }
 
 cmd_check() {
-    local json tag cur
-    json="$(http_get "$API_URL" 30)" || fail "无法访问 GitHub API（检查网络或代理）"
-    tag="$(echo "$json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+    local f code tag cur msg
+    f="$TMP_DIR/.latest.$$"
+    code="$(gh_api "$API_URL" "$f")"
+    if [ "$code" != "200" ]; then
+        msg="$(gh_api_error "$code" "$f")"
+        kv debug "HTTP $code $(head -c 160 "$f" 2>/dev/null | tr '\n' ' ')"
+        rm -f "$f"
+        fail "$msg"
+    fi
+    tag="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -n 1)"
+    rm -f "$f"
     [ -n "$tag" ] || fail "解析最新版本失败"
     cur="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
     kv current "${cur:-unknown}"
@@ -293,8 +355,10 @@ cmd_check() {
 }
 
 # 列出所有 release（含历史），供回退选择。输出 item=版本|发布日期
+# 列出所有 release（含历史），供回退选择。输出 item=版本|发布日期
+# 只走 GitHub 官方 API：per_page=100 分页翻到底，不再套国内代理，也不再用 HTML 兜底
 cmd_versions() {
-    local json now ts tf df tf2 p
+    local now ts page code n f list msg
     now="$(date +%s 2>/dev/null || echo 0)"
     ts="$(sed -n 's/^ts=//p' "$RELEASES_CACHE" 2>/dev/null | head -n 1)"
     # 5 分钟内复用缓存，避免反复消耗 GitHub 未认证额度（60 次/小时）
@@ -304,69 +368,44 @@ cmd_versions() {
         return 0
     fi
 
-    tf="$TMP_DIR/.rel_tags.$$"
-    df="$TMP_DIR/.rel_dates.$$"
-    tf2="$TMP_DIR/.rel_pairs.$$"
-    # 1) 直连 API（带 UA）；2) 失败逐个走内置代理；3) 仍不行就抓 releases HTML
-    json="$(http_get_ua "$RELEASES_URL" 30)"
-    if [ -z "$json" ]; then
-        for p in $PROXIES; do
-            json="$(http_get_ua "$p$RELEASES_URL" 30)"
-            [ -n "$json" ] && break
-        done
-    fi
+    f="$TMP_DIR/.rel_page.$$"
+    list="$TMP_DIR/.rel_items.$$"
+    : > "$list" 2>/dev/null
 
-    if [ -z "$json" ] || ! printf '%s' "$json" | grep -q '"tag_name"'; then
-        local html
-        html="$(http_get_ua "https://github.com/OpenListTeam/OpenList/releases" 30)"
-        if [ -n "$html" ]; then
-            printf '%s' "$html" | grep -o 'releases/tag/v[0-9][0-9.]*' \
-                | sed 's|.*releases/tag/||' | sort -u > "$tf" 2>/dev/null
-            if [ -s "$tf" ]; then
-                {
-                    echo "ts=$now"
-                    while IFS= read -r v; do
-                        [ -n "$v" ] && echo "item=$v|"
-                    done < "$tf"
-                } > "$RELEASES_CACHE.tmp" 2>/dev/null
-                mv -f "$RELEASES_CACHE.tmp" "$RELEASES_CACHE" 2>/dev/null || true
-                chmod 600 "$RELEASES_CACHE" 2>/dev/null || true
-                rm -f "$tf" "$df"
-                sed -n 's/^item=//p' "$RELEASES_CACHE"
-                kv source html
-                kv result ok
-                return 0
-            fi
+    page=1
+    while [ "$page" -le 10 ]; do
+        code="$(gh_api "$RELEASES_URL&page=$page" "$f")"
+        if [ "$code" != "200" ]; then
+            msg="$(gh_api_error "$code" "$f")"
+            kv debug "HTTP $code $(head -c 160 "$f" 2>/dev/null | tr '\n' ' ')"
+            rm -f "$f" "$list"
+            fail "$msg"
         fi
-        kv debug "$(printf '%s' "$json" | head -c 300)"
-        rm -f "$tf" "$df"
-        fail "解析版本列表失败"
-    fi
+        n="$(grep -c '"tag_name"' "$f" 2>/dev/null)"
+        n="${n:-0}"
+        [ "$n" -gt 0 ] || break
+        parse_releases < "$f" >> "$list" 2>/dev/null
+        # 满页才继续翻，避免多打一次空请求
+        [ "$n" -lt 100 ] && break
+        page=$((page + 1))
+    done
+    rm -f "$f"
 
-    # 用 tr 把 JSON 拆成一行一个字段，避免依赖 grep -o 与复杂正则
-    printf '%s' "$json" | tr ',' '\n' | grep '"tag_name"' \
-        | sed 's/.*"tag_name"[^"]*"\([^"]*\)".*/\1/' > "$tf" 2>/dev/null
-    printf '%s' "$json" | tr ',' '\n' | grep '"published_at"' \
-        | sed 's/.*"published_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/; s/.*"published_at".*//' \
-        | cut -c1-10 > "$df" 2>/dev/null
-
-    # 先按顺序配对再过滤非 v 版本，避免 tags 与 dates 数量错位（否则会出现 "|2025-06-20" 这种空版本行）
-    paste -d'|' "$tf" "$df" 2>/dev/null | grep -E '^v[0-9]' > "$tf2" 2>/dev/null
-    if [ ! -s "$tf2" ]; then
-        kv debug "$(printf '%s' "$json" | head -c 300)"
-        rm -f "$tf" "$df" "$tf2"
-        fail "解析版本列表失败"
+    grep -E '^v[0-9]' "$list" > "$list.ok" 2>/dev/null
+    if [ ! -s "$list.ok" ]; then
+        rm -f "$list" "$list.ok"
+        fail "解析版本列表失败（GitHub 返回里没有可用的 release）"
     fi
 
     {
         echo "ts=$now"
         while IFS= read -r line; do
             echo "item=$line"
-        done < "$tf2"
+        done < "$list.ok"
     } > "$RELEASES_CACHE.tmp" 2>/dev/null
     mv -f "$RELEASES_CACHE.tmp" "$RELEASES_CACHE" 2>/dev/null || true
     chmod 600 "$RELEASES_CACHE" 2>/dev/null || true
-    rm -f "$tf" "$df" "$tf2"
+    rm -f "$list" "$list.ok"
 
     sed -n 's/^item=//p' "$RELEASES_CACHE"
     kv result ok
@@ -470,7 +509,7 @@ cmd_use_data() {
 }
 
 cmd_update() {
-    local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code want_tag="" api
+    local force=0 asset="" tag cur url md5url work tgz md5file want got new_ver new_code want_tag="" api code="" jsonf="" msg=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --force) force=1 ;;
@@ -493,7 +532,16 @@ cmd_update() {
         progress resolve "获取最新版本"
     fi
     local json
-    json="$(http_get "$api" 30)" || fail "无法访问 GitHub API"
+    jsonf="$TMP_DIR/.upd_api.$$"
+    code="$(gh_api "$api" "$jsonf")"
+    if [ "$code" != "200" ]; then
+        msg="$(gh_api_error "$code" "$jsonf")"
+        kv debug "HTTP $code $(head -c 160 "$jsonf" 2>/dev/null | tr '\n' ' ')"
+        rm -f "$jsonf"
+        fail "$msg"
+    fi
+    json="$(cat "$jsonf" 2>/dev/null)"
+    rm -f "$jsonf"
     tag="$(echo "$json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
     [ -n "$tag" ] || fail "解析最新版本失败"
     cur="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"

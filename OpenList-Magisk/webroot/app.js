@@ -1022,7 +1022,9 @@
   }
 
   function migrateBin() {
-    var p = $('newBinPath').value.trim();
+    var box = $('binChips');
+    var p = ((box && box.dataset.value) || '').trim();
+    if (!p) return toast('请先点选目标位置', true);
     if (!/^\/(data|system\/bin)\/[A-Za-z0-9_\-./]*$/.test(p)) return toast('目标路径不合法', true);
     var b = $('migrateBinBtn');
     if (b.dataset.confirm !== '1') {
@@ -1037,7 +1039,10 @@
     ctl("migrate-bin '" + b64utf8(p) + "'", 180000).then(function (r) {
       if (r.kv.result === 'ok') {
         toast(r.kv.old_bin_removed ? '二进制已迁移，旧文件已删除' : '二进制已迁移');
-        $('newBinPath').value = '';
+        if (box) {
+          box.dataset.value = '';
+          box.querySelectorAll('.chip-btn').forEach(function (x) { x.classList.remove('active'); });
+        }
       } else {
         toast(r.kv.error || '迁移失败', true);
       }

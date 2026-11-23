@@ -170,14 +170,13 @@
   </details>
   <details>
     <summary>二进制路径迁移</summary>
-    <label>新二进制路径</label>
-    <div class="chips" data-target="newBinPath" id="binChips">
+    <div class="chips" id="binChips">
       <button type="button" class="chip-btn" data-path="/data/adb/openlist/bin/openlist">/data/adb/openlist/bin</button>
       <button type="button" class="chip-btn" data-path="/data/adb/modules/openlist/bin/openlist">模块 bin</button>
       <button type="button" class="chip-btn" data-path="/data/adb/modules/openlist/system/bin/openlist">模块 system/bin</button>
     </div>
-    <input id="newBinPath" placeholder="/data/adb/openlist/bin/openlist">
-    <div class="hint">支持 /data 或模块 system/bin；输入 /system/bin 会自动映射到模块。</div>
+    <div class="hint">点选目标位置即可（当前使用中的不会显示）。</div>
+    <div class="warnbox">会停止服务 → 复制 → chmod → 修改 service.sh / action.sh → 删除旧位置的二进制 → 启动。</div>
     <div class="btns"><button class="warn" id="migrateBinBtn">开始迁移</button></div>
   </details>
   <details>

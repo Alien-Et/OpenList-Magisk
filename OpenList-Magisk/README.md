@@ -122,6 +122,7 @@ sh /data/adb/modules/openlist/control.sh config-get
 - 支持通过 Magisk/KernelSU/APatch 更新检查
 - 更新不会清除现有数据
 - 可在安装时重新选择配置选项
+- 版本列表只走 GitHub 官方 API；遇到 403 限流时可在模块目录放一个 `.github_token`（一行 PAT）把额度从 60 次/小时提到 5000
 
 ## 数据迁移说明
 1. 安装时可选择数据目录与二进制位置
