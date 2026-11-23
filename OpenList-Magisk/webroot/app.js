@@ -750,7 +750,7 @@
     var cur = sel.dataset.value;
     menu.textContent = '';
     var rows = [
-      { v: 'auto', t: '自动选择（直连 → 镜像依次尝试）', s: '自动选择' },
+      { v: 'auto', t: '自动选择（直连 → 按实测延迟从快到慢）', s: '自动选择' },
       { v: 'direct', t: '直连（不用镜像）', s: '直连' }
     ];
     (mirrorList || '').split(/\s+/).forEach(function (u) {

@@ -9,7 +9,7 @@
 #   control.sh check
 #   control.sh versions
 #   control.sh migrate-core <base64旧目录> <base64新目录>   # 安装期用
-#   control.sh mirror-get | mirror-set <base64模式|地址> | mirror-ping
+#   control.sh mirror-get | mirror-set <base64模式|地址> | mirror-ping | mirror-rank
 #   control.sh update [--force] [--asset NAME] [--proxy URL] [--tag vX.Y.Z]
 #   control.sh logs [行数]
 #   control.sh config-get
@@ -50,8 +50,8 @@ fi
 # 下载二进制走 github.com 资源镜像（实测这批对 releases/download 可用，延迟由 mirror-ping 测）
 GH_PROXY="${GH_PROXY:-}"
 MIRRORS="https://ghfast.top/ https://gh-proxy.com/ https://cdn.gh-proxy.com/ https://gh-proxy.org/ https://ghproxy.cn/ https://slink.ltd/ https://gh.monlor.com/ https://gh.con.sh/ https://ghproxy.cfd/ https://ghproxy.imciel.com/ https://ghp.keleyaa.com/ https://gh.7-s.cn/ https://gh-proxy.net/ https://ghproxy.net/ https://gh.ddlc.top/"
-# auto 模式的尝试顺序：只放实测稳定且快的几个，避免每次下载先耗在超时上
-PROXIES="https://ghfast.top/ https://gh-proxy.com/ https://cdn.gh-proxy.com/ https://gh-proxy.org/ https://ghproxy.cn/ https://slink.ltd/ https://gh.monlor.com/"
+# auto 模式不写死顺序：按实测延迟从快到慢排（结果缓存 30 分钟）
+PROXIES=""
 # 测速探针：仓库里的 README（不绑某个 release，各镜像都转发 /raw/）
 PROBE_URL="$GH_DL/releases/latest/download/md5-android.txt"
 
@@ -61,16 +61,22 @@ MIRROR_MODE="auto"
 MIRROR_URL=""
 MIRROR_CONF=""
 
-# http_download 依次尝试的镜像前缀
+# 当前生效的镜像前缀：
+#   auto   = 按实测延迟从快到慢（缓存 30 分钟，过期自动重测）
+#   direct = 不套镜像
+#   custom = 指定镜像优先，其余按实测顺序兜底
 download_proxies() {
+    local ranked
     case "$MIRROR_MODE" in
-        direct) ;;
-        custom)
-            [ -n "$MIRROR_URL" ] && printf '%s\n' "$MIRROR_URL"
-            printf '%s\n' $MIRRORS
-            ;;
-        *) printf '%s\n' $MIRRORS ;;
+        direct) return 0 ;;
+        custom) [ -n "$MIRROR_URL" ] && printf '%s\n' "$MIRROR_URL" ;;
     esac
+    ranked="$(mirror_ranking 2>/dev/null)"
+    if [ -n "$ranked" ]; then
+        printf '%s\n' $ranked
+    else
+        printf '%s\n' $MIRRORS
+    fi
 }
 
 # ---------- 基础 ----------
@@ -109,6 +115,7 @@ OPENLIST_BINARY="$(expand_moddir "$(get_var OPENLIST_BINARY)")"
 
 # 读取用户选的下载镜像（安装在数据目录里，跟随数据迁移）
 MIRROR_CONF="$DATA_DIR/mirror.conf"
+MIRROR_RANK="$DATA_DIR/.mirror_rank"
 if [ -f "$MIRROR_CONF" ]; then
     _mm="$(sed -n 's/^mode=//p' "$MIRROR_CONF" 2>/dev/null | head -n 1)"
     _mu="$(sed -n 's/^url=//p' "$MIRROR_CONF" 2>/dev/null | head -n 1)"
@@ -217,6 +224,52 @@ cache_latest_tag() {
 }
 
 # ---------- 下载镜像偏好 ----------
+# 并发测速：输出 <url>|<ms>|<code>，ms 为空表示不可达
+probe_mirrors() {
+    local d i=0 p r code ms
+    d="$TMP_DIR/.mirror_probe.$$"
+    rm -rf "$d" 2>/dev/null
+    mkdir -p "$d" 2>/dev/null || return 1
+    if have curl; then
+        for p in $MIRRORS; do
+            i=$((i + 1))
+            ( r="$(curl -sL -r 0-512 -o /dev/null --connect-timeout 5 -m 8 -w '%{http_code} %{time_total}' "${p}${PROBE_URL}" 2>/dev/null)"
+              printf '%s' "$r" > "$d/$i" 2>/dev/null ) &
+        done
+        wait
+    fi
+    i=0
+    for p in $MIRRORS; do
+        i=$((i + 1))
+        code=""
+        ms=""
+        [ -f "$d/$i" ] && read -r code ms < "$d/$i" 2>/dev/null
+        case "$code" in
+            200|206) ms="$(awk -v t="${ms:-0}" 'BEGIN{printf "%d", t * 1000}')" ;;
+            # 3xx 说明镜像本身响应正常，只是多跳一次，也算可达
+            301|302|303|307|308) ms="$(awk -v t="${ms:-0}" 'BEGIN{printf "%d", t * 1000}')" ;;
+            *) ms=""; code="${code:-000}" ;;
+        esac
+        echo "$p|$ms|${code:-000}"
+    done
+    rm -rf "$d" 2>/dev/null
+}
+
+# 按实测延迟从快到慢（只含可达的）；缓存 30 分钟，过期自动重测
+mirror_ranking() {
+    local now ts
+    now="$(date +%s 2>/dev/null || echo 0)"
+    if [ -f "$MIRROR_RANK" ]; then
+        ts="$(sed -n 's/^ts=//p' "$MIRROR_RANK" 2>/dev/null | head -n 1)"
+        if [ -n "$ts" ] && [ "$((now - ts))" -lt 1800 ] 2>/dev/null; then
+            sed -n 's/^m=//p' "$MIRROR_RANK" 2>/dev/null | sort -n | awk '{print $2}'
+            return 0
+        fi
+    fi
+    cmd_mirror_ping >/dev/null 2>&1
+    sed -n 's/^m=//p' "$MIRROR_RANK" 2>/dev/null | sort -n | awk '{print $2}'
+}
+
 cmd_mirror_get() {
     kv mode "$MIRROR_MODE"
     kv url "$MIRROR_URL"
@@ -274,41 +327,24 @@ cmd_mirror_set() {
     kv result ok
 }
 
-# 并发测各镜像延迟：拉 release 里的小文件（几百字节），输出 item=<url>|<ms>|<code>
+# 并发测所有镜像，输出 item=<url>|<ms>|<code>，并把可达的按延迟写进排序缓存
 cmd_mirror_ping() {
-    local d i=0 p r code ms
-    d="$TMP_DIR/.mirror_ping.$$"
-    rm -rf "$d" 2>/dev/null
-    mkdir -p "$d" 2>/dev/null || fail "无法创建临时目录"
-    if have curl; then
-        for p in $MIRRORS; do
-            i=$((i + 1))
-            ( r="$(curl -sL -r 0-512 -o /dev/null -m 8 -w '%{http_code} %{time_total}' "${p}${PROBE_URL}" 2>/dev/null)"
-              printf '%s' "$r" > "$d/$i" 2>/dev/null ) &
-        done
-        wait
-        i=0
-        for p in $MIRRORS; do
-            i=$((i + 1))
-            code=""
-            ms=""
-            if [ -f "$d/$i" ]; then
-                read -r code ms < "$d/$i" 2>/dev/null
-            fi
-            case "$code" in
-                200|206) ms="$(awk -v t="${ms:-0}" 'BEGIN{printf "%d", t * 1000}')" ;;
-                # 3xx 说明镜像本身响应正常，只是多跳一次，也算可达
-                301|302|303|307|308) ms="$(awk -v t="${ms:-0}" 'BEGIN{printf "%d", t * 1000}')" ;;
-                *) ms=""; code="${code:-000}" ;;
-            esac
-            echo "item=$p|$ms|${code:-000}"
-        done
-    else
-        for p in $MIRRORS; do
-            echo "item=$p|-|nocurl"
-        done
-    fi
-    rm -rf "$d" 2>/dev/null
+    local now d p ms code
+    now="$(date +%s 2>/dev/null || echo 0)"
+    d="$TMP_DIR/.mirror_ping_out.$$"
+    probe_mirrors > "$d" 2>/dev/null
+    mkdir -p "$(dirname "$MIRROR_RANK")" 2>/dev/null || true
+    {
+        echo "ts=$now"
+        while IFS='|' read -r p ms code; do
+            case "$ms" in ''|*[!0-9]*) continue ;; esac
+            echo "m=$ms $p"
+        done < "$d"
+    } > "$MIRROR_RANK.tmp" 2>/dev/null && mv -f "$MIRROR_RANK.tmp" "$MIRROR_RANK" 2>/dev/null
+    while IFS='|' read -r p ms code; do
+        echo "item=$p|$ms|$code"
+    done < "$d"
+    rm -f "$d" 2>/dev/null
     kv result ok
 }
 
@@ -1356,6 +1392,7 @@ case "$cmd" in
     mirror-get) cmd_mirror_get "$@" ;;
     mirror-set) cmd_mirror_set "$@" ;;
     mirror-ping) cmd_mirror_ping "$@" ;;
+    mirror-rank) mirror_ranking ;;
     migrate-bin) cmd_migrate_bin "$@" ;;
     fix-paths) cmd_fix_paths ;;
     version)
