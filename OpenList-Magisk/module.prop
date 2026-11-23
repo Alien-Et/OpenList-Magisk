@@ -1,7 +1,7 @@
 id=openlist
 name=OpenList (Magisk/KernelSU/APatch)
-version=v5.0.0
-versionCode=50000
+version=v5.0.1
+versionCode=50001
 author=Alien-Et
 description=【已停止】请点击"操作"启动程序。项目地址：https://github.com/Alien-Et/OpenList-Magisk
 updateJson=https://raw.githubusercontent.com/Alien-Et/OpenList-Magisk/main/update.json

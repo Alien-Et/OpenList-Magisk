@@ -386,6 +386,21 @@ http_download() { # url out
     return 1
 }
 
+# 只探测资产在不在（HEAD），用来区分「版本不存在」和「网络不通」。
+# 不做镜像轮询：调用方通常已经有明确的 URL。
+url_head_ok() { # url
+    local u="$1" code=""
+    if have curl; then
+        code="$(curl -sIL -o /dev/null -w '%{http_code}' --connect-timeout 6 -m 12 "$u" 2>/dev/null)"
+        [ "$code" = "200" ] && return 0
+        return 1
+    fi
+    if [ -n "$BB" ]; then
+        "$BB" wget --spider -q -T 12 "$u" 2>/dev/null && return 0
+    fi
+    return 1
+}
+
 # ---------- 探测 ----------
 detect_port() {
     local p=""
@@ -1000,6 +1015,17 @@ cmd_fetch_bin() {
                  md5url="$GH_DL/releases/latest/download/md5-android.txt" ;;
     esac
 
+    # 传进来的版本可能不是 OpenList 的版本号 —— online 包用的是模块自身的版本
+    # （v5.0.0 之类），上游根本没有这个 Release。先用 HEAD 探一下，
+    # 免得 15 个镜像逐个 404 白等一分钟，探不到就直接用 latest。
+    if [ -n "$ver" ] && ! url_head_ok "$url"; then
+        kv note "OpenList 没有 $ver 这个版本，改用 latest"
+        kv module_version "$ver"
+        ver=""
+        url="$GH_DL/releases/latest/download/$asset"
+        md5url="$GH_DL/releases/latest/download/md5-android.txt"
+    fi
+
     work="$TMP_DIR/.openlist_fetch.$$"
     rm -rf "$work" 2>/dev/null
     mkdir -p "$work" 2>/dev/null || { kv ok 0; kv error "无法创建临时目录 $work"; kv result fail; return 0; }
@@ -1011,6 +1037,7 @@ cmd_fetch_bin() {
         rm -rf "$work" 2>/dev/null
         kv ok 0
         kv asset "$asset"
+        kv url "$url"
         kv error "下载失败（直连与镜像均不可用）"
         kv result fail
         return 0
@@ -1046,6 +1073,7 @@ cmd_fetch_bin() {
     chmod 755 "$work/openlist" 2>/dev/null
     kv ok 1
     kv asset "$asset"
+    kv url "$url"
     kv path "$work/openlist"
     kv result ok
 }

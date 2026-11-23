@@ -167,6 +167,7 @@ ui_print "🎯 目标架构：$BIN_ARCH"
 BIN_SRC=""
 BIN_FROM=""
 MOD_VER=""
+FETCH_URL=""
 
 PKG_BIN="$MODROOT/openlist-$BIN_ARCH"
 if [ -f "$PKG_BIN" ]; then
@@ -200,10 +201,11 @@ if [ -z "$BIN_SRC" ]; then
         *) MOD_VER="" ;;   # 取不到就让 control.sh 退回 latest
     esac
     if [ -n "$MOD_VER" ]; then
-        ui_print "🌐 安装包内没有 $BIN_ARCH 二进制，在线下载 $MOD_VER 版本（约 55 MB）"
+        ui_print "🌐 安装包内没有 $BIN_ARCH 二进制，开始在线获取（模块 $MOD_VER，约 55 MB）"
     else
-        ui_print "🌐 安装包内没有 $BIN_ARCH 二进制，在线下载最新版本（约 55 MB）"
+        ui_print "🌐 安装包内没有 $BIN_ARCH 二进制，开始在线获取（约 55 MB）"
     fi
+    ui_print "   优先取与模块对应的版本，上游没有该版本时自动改用最新版"
     ui_print "   网络慢时请耐心等待，别退出管理器"
     if [ -f "$MODROOT/control.sh" ]; then
         chmod 755 "$MODROOT/control.sh" 2>/dev/null || true
@@ -212,6 +214,7 @@ if [ -z "$BIN_SRC" ]; then
         FETCH_OK="$(sed -n 's/^ok=//p' "$FETCH_OUT" 2>/dev/null | head -n 1)"
         BIN_SRC="$(sed -n 's/^path=//p' "$FETCH_OUT" 2>/dev/null | head -n 1)"
         FETCH_ERR="$(sed -n 's/^error=//p' "$FETCH_OUT" 2>/dev/null | head -n 1)"
+        FETCH_URL="$(sed -n 's/^url=//p' "$FETCH_OUT" 2>/dev/null | head -n 1)"
         rm -f "$FETCH_OUT" 2>/dev/null
         if [ "$FETCH_OK" = "1" ] && [ -n "$BIN_SRC" ] && [ -f "$BIN_SRC" ]; then
             ui_print "✅ 下载完成"
@@ -232,7 +235,9 @@ if [ -z "$BIN_SRC" ]; then
     ui_print " "
     ui_print "手动解决："
     ui_print "1. 用浏览器打开下面地址下载"
-    if [ -n "$MOD_VER" ]; then
+    if [ -n "$FETCH_URL" ]; then
+        ui_print "   $FETCH_URL"
+    elif [ -n "$MOD_VER" ]; then
         ui_print "   https://github.com/OpenListTeam/OpenList/releases/download/$MOD_VER/openlist-android-$BIN_ARCH.tar.gz"
     else
         ui_print "   https://github.com/OpenListTeam/OpenList/releases/latest/download/openlist-android-$BIN_ARCH.tar.gz"
