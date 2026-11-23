@@ -145,6 +145,14 @@ WebUI 里点更新走的是 `update-bg`（后台跑）+ `update-status`（轮询
 - **卸载默认保留数据**：只清理二进制。要连数据一起删，卸载前执行
   `touch /data/adb/modules/openlist/.delete_data_on_uninstall`，或卸载后手动 `rm -rf`
 
+## 数据迁移说明
+1. 安装时可选择数据目录与二进制位置；更新安装时若检测到旧数据且换了目录，安装界面会多问一次「音量+ 迁移 / 音量- 跳过」（默认跳过，迁移失败不删源）
+2. 装好后也能在 WebUI 迁移页随时改：选目标目录 → 「开始迁移」
+3. 迁移 = 移动：复制、校验文件数与 data.db 的 md5 全部通过后，才同步 `config.json` 路径并删除源目录
+4. 二进制迁移同理，校验一致后删除旧文件，不会同时留两份
+5. 迁移完成后 WebUI 自动刷新状态、路径体检与日志
+
+
 ## 故障排除
 
 ### 常见问题
@@ -164,6 +172,11 @@ WebUI 里点更新走的是 `update-bg`（后台跑）+ `update-status`（轮询
    - 确认数据目录可写
    - 查看详细日志
 
+4. **online 包装不上 / 提示缺少二进制**
+   - 这个包不含二进制，安装时要联网下载（约 55 MB）
+   - 断网时先把 `openlist-android-<arch>.tar.gz` 放进 `Download` 目录，安装脚本会优先用它
+   - 只想换 OpenList 版本：WebUI 里「立即更新」可以升级或回退
+
 ### 手动操作
 - 停止服务：`su -c pkill -f openlist`
 - 启动服务：`su -c /data/adb/modules/openlist/service.sh`
@@ -177,7 +190,7 @@ WebUI 里点更新走的是 `update-bg`（后台跑）+ `update-status`（轮询
 
 ## 更新日志
 
-> 本次为模块更新，非 OpenList 官方二进制更新。
+> 这里记的是**模块自身**的改动。OpenList 二进制的版本跟上游同步，由 CI 自动构建。
 
 ### v4.2.10 (2026-11-23)
 
@@ -189,25 +202,21 @@ WebUI 里点更新走的是 `update-bg`（后台跑）+ `update-status`（轮询
 
 > 本次更新只测试到「WebUI 能正常用」这一步，没有做完整回归，可能还有没挖出来的隐藏 bug。遇到问题请到仓库提 issue。
 
-## 数据迁移说明
-1. 安装时可选择数据目录与二进制位置；更新安装时若检测到旧数据且换了目录，安装界面会多问一次「音量+ 迁移 / 音量- 跳过」（默认跳过，迁移失败不删源）
-2. 装好后也能在 WebUI 迁移页随时改：选目标目录 → 「开始迁移」
-3. 迁移 = 移动：复制、校验文件数与 data.db 的 md5 全部通过后，才同步 `config.json` 路径并删除源目录
-4. 二进制迁移同理，校验一致后删除旧文件，不会同时留两份
-5. 迁移完成后 WebUI 自动刷新状态、路径体检与日志
-
 ## 贡献
 - 欢迎提交 Issue 和 Pull Request
 - 问题反馈：[GitHub Issues](https://github.com/Alien-Et/OpenList-Magisk/issues)
+- 安装包怎么选、更新通道的区别、使用经验交流：[Discussions](https://github.com/Alien-Et/OpenList-Magisk/discussions)
 
 ## 许可证
 模块自身的脚本、WebUI 与文档基于 [MIT 许可证](../LICENSE) 发布。
 
-模块内打包的 `openlist` 二进制来自 [OpenList 官方 Release](https://github.com/OpenListTeam/OpenList/releases)，遵循上游 **AGPL-3.0** 许可证，对应源码见 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)。
+4 个架构包内打包的 `openlist` 二进制来自 [OpenList 官方 Release](https://github.com/OpenListTeam/OpenList/releases)，遵循上游 **AGPL-3.0** 许可证，对应源码见 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)。`online` 包不含二进制，安装时下载的那份同样属于上游。
 
 安装包内随附 [LICENSE](LICENSE)（MIT 副本）、[LICENSE-AGPL-3.0.txt](LICENSE-AGPL-3.0.txt)（AGPL-3.0 全文）与 [THIRD-PARTY.md](THIRD-PARTY.md)（第三方组件说明）。
 
 ## 文档
+
+> 以下文档在 GitHub 仓库里；装到设备后的模块目录只有这份 README，没有 docs。
 
 - [01. 整体架构](../docs/01.整体架构.md)
 - [02. control 命令](../docs/02.control命令.md)

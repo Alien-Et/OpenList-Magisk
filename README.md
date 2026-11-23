@@ -16,8 +16,8 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 **安装**
 
-- 三种二进制位置：`/data/adb/OpenList/bin`、模块 `bin/`、模块 `system/bin`
-- 两种数据目录：`/data/adb/OpenList`、`/sdcard/Android/OpenList`
+- 三种二进制位置：`/data/adb/openlist/bin`、模块 `bin/`、模块 `system/bin`
+- 两种数据目录：`/data/adb/openlist`、`/sdcard/Android/openlist`
 - 更新安装时如果换了数据目录，可以顺手把旧数据迁过来（音量+ 迁移 / 音量- 跳过，默认跳过）
 - 管理员账号交给网页向导创建，安装脚本不碰密码
 
@@ -180,10 +180,18 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 ### 数据存储
 
-- 默认数据目录：`/data/adb/OpenList/`，日志是同目录下的 `service.log` 和 `openlist.log`
+- 默认数据目录：`/data/adb/openlist/`，日志是同目录下的 `service.log` 和 `openlist.log`
 - 下载镜像偏好存在 `<数据目录>/mirror.conf`，跟着数据目录走，模块更新不会丢
 - **卸载默认保留数据**：只清理二进制。确实要连数据一起删，卸载前执行
-  `touch /data/adb/modules/OpenList/.delete_data_on_uninstall`，或卸载后手动 `rm -rf`
+  `touch /data/adb/modules/openlist/.delete_data_on_uninstall`，或卸载后手动 `rm -rf`
+
+## 数据迁移说明
+1. 安装时可选择数据目录与二进制位置
+2. 装好后也能在 WebUI 迁移页随时改：选目标目录 → 「开始迁移」
+3. 迁移 = 移动：复制、校验文件数与 data.db 的 md5 全部通过后，才同步 `config.json` 路径并删除源目录
+4. 二进制迁移同理，校验一致后删除旧文件，不会同时留两份
+5. 迁移完成后 WebUI 自动刷新状态、路径体检与日志
+
 
 ## 故障排除
 
@@ -211,13 +219,18 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
    - 下载走镜像：「下载镜像」里选「自动选择」，或指定某个镜像
 
 5. **重启后没有自动启动**
-   - 看 `/data/adb/modules/OpenList/service.log` 最后几行
+   - 看 `/data/adb/modules/openlist/service.log` 最后几行
    - 卡在「等待外部存储就绪」是 `/sdcard` 挂载慢，最多等 180 秒，不用管
-   - 手动跑一次确认二进制的数据目录没问题：`su -c /data/adb/modules/OpenList/service.sh`
+   - 手动跑一次确认二进制的数据目录没问题：`su -c /data/adb/modules/openlist/service.sh`
 
 6. **WebUI 打不开**
    - Magisk 没有 WebUI 机制，只能用「操作」按钮或终端 `control.sh`
    - KernelSU / APatch 在模块卡片里点 WebUI
+
+7. **online 包装不上 / 提示缺少二进制**
+   - 这个包**不含二进制**，安装时要联网下载（约 55 MB），断网就会中止
+   - 断网装的话，先把 `openlist-android-<arch>.tar.gz` 放进 `Download` 目录，安装脚本会优先用它
+   - 已经装好、只想换 OpenList 版本：WebUI 里「立即更新」可以升级或回退，不影响模块本身
 
 ### 手动操作
 - 停止服务：`su -c pkill -f openlist`
@@ -234,7 +247,7 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 ## 更新日志
 
-> 本次为模块更新，非 OpenList 官方二进制更新。
+> 这里记的是**模块自身**的改动。OpenList 二进制的版本跟上游同步，由 CI 自动构建，见 [两条更新通道](#两条更新通道)。
 
 ### v4.2.10 (2026-11-23)
 
@@ -262,31 +275,15 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 - **优化** action.sh 启停服务的输出提示信息
 - **改进** 移除冗余的占位符验证逻辑
 
-## 数据迁移说明
-1. 安装时可选择数据目录与二进制位置
-2. 装好后也能在 WebUI 迁移页随时改：选目标目录 → 「开始迁移」
-3. 迁移 = 移动：复制、校验文件数与 data.db 的 md5 全部通过后，才同步 `config.json` 路径并删除源目录
-4. 二进制迁移同理，校验一致后删除旧文件，不会同时留两份
-5. 迁移完成后 WebUI 自动刷新状态、路径体检与日志
-
-## 关于内嵌二进制
-
-以前这里是「征求意见」——要不要把内嵌二进制砍掉。现在定下来了：**每个架构各发一个包，外加一个纯在线包。**
-
-- 4 个架构包（arm64 / arm / amd64 / 386）各自只带一份二进制，断网、recovery 里都能装
-- `online.zip` 只有约 76 KB，安装时按设备架构现下
-- 包里没有对应架构的二进制时，`customize.sh` 会自动在线下载（复用 `control.sh` 的镜像列表与 md5 校验），失败才中止并打印手动下载指引
-
-不再有「双架构包」或「四合一 full 包」——一个设备只需要一份二进制，多塞的只是白占体积。细节见 [安装包怎么选](#安装包怎么选)、[两条更新通道](#两条更新通道) 与 [二进制获取顺序](#二进制获取顺序)。
-
 ## 贡献
 - 欢迎提交 Issue 和 Pull Request
 - 问题反馈：[GitHub Issues](https://github.com/Alien-Et/OpenList-Magisk/issues)
+- 安装包怎么选、更新通道的区别、使用经验交流：[Discussions](https://github.com/Alien-Et/OpenList-Magisk/discussions)
 
 ## 许可证
 模块自身的脚本、WebUI 与文档基于 [MIT 许可证](LICENSE) 发布。
 
-模块内打包的 `openlist` 二进制来自 [OpenList 官方 Release](https://github.com/OpenListTeam/OpenList/releases)，遵循上游 **AGPL-3.0** 许可证，对应源码见 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)。
+4 个架构包内打包的 `openlist` 二进制来自 [OpenList 官方 Release](https://github.com/OpenListTeam/OpenList/releases)，遵循上游 **AGPL-3.0** 许可证，对应源码见 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)。`online` 包不含二进制，安装时下载的那份同样属于上游。
 
 安装包内随附 `LICENSE`（MIT 副本）、`LICENSE-AGPL-3.0.txt`（AGPL-3.0 全文）与 `THIRD-PARTY.md`（第三方组件说明），装到设备上也能随时查阅。
 
