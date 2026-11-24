@@ -321,7 +321,10 @@ if ps -p $OPENLIST_PID >/dev/null || pgrep -f "$OPENLIST_BINARY server --data" >
     log "OpenList 服务启动成功 (PID: $OPENLIST_PID)"
     # 记录这份二进制的版本，WebUI 靠它显示「OpenList 版本」和「所有版本」里的「当前」标记。
     # 模块目录每次升级都会被整体替换，所以在数据目录再存一份，升级后不会退化成 unknown。
-    BIN_VER="$("$OPENLIST_BINARY" version 2>/dev/null | head -n 5 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+    # 版本在第 5 行「Version: vX.Y.Z」，第 2 行的 go1.27.3 也是 x.y.z，所以要按行挑
+    v_out="$("$OPENLIST_BINARY" version 2>/dev/null | head -n 20)"
+    BIN_VER="$(printf '%s\n' "$v_out" | grep -iE '^[[:space:]]*(web)?version[[:space:]]*:' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+    [ -n "$BIN_VER" ] || BIN_VER="$(printf '%s\n' "$v_out" | grep -viE 'go version|built at|commit id|author' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
     if [ -n "$BIN_VER" ]; then
         case "$BIN_VER" in v*) ;; *) BIN_VER="v$BIN_VER" ;; esac
         printf '%s\n' "$BIN_VER" > "$MODDIR/.bin_version" 2>/dev/null || true

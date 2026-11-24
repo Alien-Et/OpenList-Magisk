@@ -240,17 +240,26 @@ set_bin_version() { # vX.Y.Z
 # 而且输出首行未必是版本（可能有日志、空行、颜色码），所以逐个参数试、再多看几行。
 # 返回时不带 v 前缀，由调用方统一规范化。
 bin_version_raw() {
-    local args out
+    local args out v
     [ -x "${OPENLIST_BINARY:-}" ] || return 1
     for args in version --version -v; do
         if have timeout; then
-            out="$(timeout 3 "$OPENLIST_BINARY" $args 2>/dev/null | head -n 5)"
+            out="$(timeout 3 "$OPENLIST_BINARY" $args 2>/dev/null | head -n 20)"
         else
-            out="$("$OPENLIST_BINARY" $args 2>/dev/null | head -n 5)"
+            out="$("$OPENLIST_BINARY" $args 2>/dev/null | head -n 20)"
         fi
-        out="$(printf '%s' "$out" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
-        if [ -n "$out" ]; then
-            printf '%s' "$out"
+        [ -n "$out" ] || continue
+        # 输出长这样（版本在第 5 行，第 2 行的 go1.27.3 也是 x.y.z）：
+        #   Built At: 2026-11-19 03:29:04 +0000
+        #   Go Version: go1.27.3 android/arm64
+        #   Author: ... / Commit ID: 7c26f10
+        #   Version: v4.2.10
+        # 所以先认 "Version:" / "WebVersion:" 这两行，抓不到才退回全文，
+        # 并且把 go version / built at / commit / author 这些含数字的行排除掉。
+        v="$(printf '%s\n' "$out" | grep -iE '^[[:space:]]*(web)?version[[:space:]]*:' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+        [ -n "$v" ] || v="$(printf '%s\n' "$out" | grep -viE 'go version|built at|commit id|author' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+        if [ -n "$v" ]; then
+            printf '%s' "$v"
             return 0
         fi
     done

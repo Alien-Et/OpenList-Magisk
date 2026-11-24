@@ -296,7 +296,11 @@ chmod 755 "$BINARY_PATH/$BINARY_NAME"
 
 # 记下这份二进制自己的版本，WebUI 靠它显示「OpenList 版本」。
 # online 包的 module.prop version 是模块版本（日期+流水号），跟二进制版本是两个东西。
-BIN_VER_NOW="$("$BINARY_PATH/$BINARY_NAME" version 2>/dev/null | head -n 1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+# 版本号在第 5 行「Version: vX.Y.Z」；第 2 行的 Go Version（go1.27.3）同样形如 x.y.z，
+# 之前只取第一行（Built At: …）导致永远解析失败，.bin_version 从来没有写成功过。
+v_out="$("$BINARY_PATH/$BINARY_NAME" version 2>/dev/null | head -n 20)"
+BIN_VER_NOW="$(printf '%s\n' "$v_out" | grep -iE '^[[:space:]]*(web)?version[[:space:]]*:' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+[ -n "$BIN_VER_NOW" ] || BIN_VER_NOW="$(printf '%s\n' "$v_out" | grep -viE 'go version|built at|commit id|author' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
 case "$BIN_VER_NOW" in
     v[0-9]*) ;;
     [0-9]*) BIN_VER_NOW="v$BIN_VER_NOW" ;;
