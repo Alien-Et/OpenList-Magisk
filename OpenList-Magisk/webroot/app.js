@@ -270,7 +270,11 @@
     state.port = kv.port || '5244';
     state.ip = kv.ip || '127.0.0.1';
     state.pid = kv.pid || '-';
-    state.version = kv.version || '-';
+    // 两条通道的版本语义不同，界面分开显示：
+    //   module_version    = module.prop 的 version（online 是日期+流水号，binary 是 OpenList 版本）
+    //   openlist_version  = 当前这份二进制自己的版本
+    state.moduleVersion = kv.module_version || kv.version || '-';
+    state.version = kv.openlist_version || '-';
 
     $('verChip').textContent = state.version;
     $('stateDot').className = 'dot ' + (state.running === '1' ? 'on' : 'off');
@@ -280,6 +284,7 @@
     setPath('dataDirText', kv.data_dir);
     setPath('modDirText', kv.module_dir || MODDIR);
     setPath('binText', kv.bin);
+    $('modVer').textContent = state.moduleVersion;
     $('curVer').textContent = state.version;
     if (kv.abi) $('abiText').textContent = kv.abi;
 
@@ -905,6 +910,7 @@
         else mirrorLat[url] = (code === '000' ? '超时' : '✗ ' + code);
       });
       renderMirrorMenu();
+      toast('测速完成');
     }).catch(function (e) {
       toast('测速失败: ' + e, true);
     }).finally(function () {
@@ -1057,14 +1063,23 @@
     ctl("update --tag '" + ver + "' --force", 1800000).then(function (r) {
       stopProgress();
       if (r.kv.result === 'ok') {
-        toast('已切换到 ' + (r.kv.current || ver));
+        var nowVer = r.kv.current || ver;
+        var modVer = r.kv.module_version || '';
+        $('updateHint').textContent = '✅ 已切换到 ' + nowVer +
+          (modVer ? '（模块版本 ' + modVer + '）' : '') + '，服务已重新启动。';
+        toast('已切换到 ' + nowVer);
         $('updateWarn').style.display = 'none';
       } else {
+        $('updateHint').textContent = '❌ 切换失败：' + (r.kv.error || '未知错误');
         toast(r.kv.error || '切换失败', true);
         $('updateWarn').textContent = r.kv.error || '切换失败';
         $('updateWarn').style.display = 'block';
       }
       return refresh();
+    }).catch(function (e) {
+      stopProgress();
+      $('updateHint').textContent = '❌ 切换失败：' + e;
+      toast('切换失败：' + e, true);
     }).finally(function () {
       btn.disabled = false;
       btn.textContent = '安装';
@@ -1105,7 +1120,22 @@
     var b = $('saveCfgBtn');
     b.disabled = true;
     ctl("config-save '" + b64utf8(body) + "'", 30000).then(function (r) {
-      toast(r.kv.result === 'ok' ? '配置已保存' : (r.kv.error || '保存失败'), r.kv.result !== 'ok');
+      if (r.kv.result !== 'ok') {
+        toast(r.kv.error || '保存失败', true);
+        return;
+      }
+      // 端口变了 control.sh 会顺手重启一次（config.json 只在启动时读）
+      if (r.kv.port_changed === '1') {
+        if (r.kv.restarted === '1') {
+          toast('端口已改为 ' + r.kv.port + '，服务已自动重启');
+        } else {
+          toast('端口已改为 ' + r.kv.port + '，但自动重启失败，请点「重启服务」', true);
+        }
+        return refresh().then(loadConfig);
+      }
+      toast('配置已保存');
+    }).catch(function (e) {
+      toast('保存失败：' + e, true);
     }).finally(function () { b.disabled = false; });
   }
 
@@ -1410,7 +1440,15 @@
 
     $('toggleBtn').onclick = toggleService;
     $('restartBtn').onclick = restart;
-    $('refreshBtn').onclick = function () { refresh(); loadLog(); };
+    $('refreshBtn').onclick = function () {
+      var b = $('refreshBtn');
+      b.disabled = true;
+      Promise.all([refresh(), loadLog()]).then(function () {
+        toast('已刷新');
+      }).catch(function (e) {
+        toast('刷新失败：' + e, true);
+      }).finally(function () { b.disabled = false; });
+    };
     $('checkBtn').onclick = checkUpdate;
     $('cleanBinsBtn').onclick = cleanBins;
     $('updateBtn').onclick = doUpdate;
@@ -1428,9 +1466,13 @@
     $('mirrorPing').onclick = pingMirrors;
     $('logRefresh').onclick = loadLog;
     $('logClear').onclick = clearLog;
-    $('storageRefresh').onclick = loadStorages;
+    $('storageRefresh').onclick = function () {
+      loadStorages().then(function () { toast('存储列表已刷新'); });
+    };
     $('storageReload').onclick = reloadStorages;
-    $('taskRefresh').onclick = loadTasks;
+    $('taskRefresh').onclick = function () {
+      loadTasks().then(function () { toast('任务列表已刷新'); });
+    };
     $('openBtn').onclick = function () {
       if (state.running !== '1') return toast('服务未运行', true);
       var url = 'http://' + state.ip + ':' + state.port;

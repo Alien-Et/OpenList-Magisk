@@ -107,6 +107,7 @@ jobs:
             -e "s|^name=.*|name=OpenList(online)|" \
             -e "s|^version=.*|version=${{ env.VER }}|" \
             -e "s|^versionCode=.*|versionCode=${{ env.CODE }}|" \
+            -e "s|^channel=.*|channel=online|" \
             -e "s|^updateJson=.*|updateJson=https://raw.githubusercontent.com/Alien-Et/OpenList-Magisk/main/update.json|" \
             "$d/module.prop"
           ( cd "$d" && zip -r -q "../../openlist-magisk-online.zip" . )

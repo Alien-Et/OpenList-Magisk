@@ -2,6 +2,7 @@ id=openlist
 name=OpenList(online)
 version=2026.11.24-1
 versionCode=2078100
+channel=online
 author=Alien-Et
 description=【已停止】请点击"操作"启动程序。项目地址：https://github.com/Alien-Et/OpenList-Magisk
 updateJson=https://raw.githubusercontent.com/Alien-Et/OpenList-Magisk/main/update.json

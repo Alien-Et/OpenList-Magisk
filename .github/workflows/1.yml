@@ -192,6 +192,7 @@ jobs:
               -e "s|^name=.*|name=OpenList(binary)|" \
               -e "s|^version=.*|version=$V|" \
               -e "s|^versionCode=.*|versionCode=$CODE|" \
+              -e "s|^channel=.*|channel=binary|" \
               -e "s|^updateJson=.*|updateJson=$RAW/update-$arch.json|" \
               "$d/module.prop"
             ( cd "$d" && zip -r -q "../../$BASE-$arch.zip" . )

@@ -294,6 +294,21 @@ chmod 755 "$BINARY_PATH/$BINARY_NAME"
 
 [ "$BINARY_PATH" = "$MODROOT/system/bin" ] && chcon -R u:object_r:system_file:s0 "$BINARY_PATH/$BINARY_NAME"
 
+# 记下这份二进制自己的版本，WebUI 靠它显示「OpenList 版本」。
+# online 包的 module.prop version 是模块版本（日期+流水号），跟二进制版本是两个东西。
+BIN_VER_NOW="$("$BINARY_PATH/$BINARY_NAME" version 2>/dev/null | head -n 1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+case "$BIN_VER_NOW" in
+    v[0-9]*) ;;
+    [0-9]*) BIN_VER_NOW="v$BIN_VER_NOW" ;;
+    *) ;;
+esac
+if [ -n "$BIN_VER_NOW" ]; then
+    printf '%s\n' "$BIN_VER_NOW" > "$MODROOT/.bin_version" 2>/dev/null || true
+    ui_print "🏷️ OpenList 二进制版本：$BIN_VER_NOW"
+else
+    rm -f "$MODROOT/.bin_version" 2>/dev/null
+fi
+
 case "$BIN_FROM" in
     package) ui_print "✅ 已安装 $BIN_ARCH 二进制（安装包内置）" ;;
     manual)  ui_print "✅ 已安装 $BIN_ARCH 二进制（来自 Download 目录）" ;;
@@ -464,6 +479,31 @@ if [ "$MIGRATE" = "1" ]; then
     fi
     ui_print "✅ 迁移完成，旧目录已删除"
     rm -f "$MIG_LOG"
+fi
+
+# ---------- 清理旧安装位置的残留二进制 ----------
+# 这次选的安装位置和上次不一样时，旧位置那份二进制就没人管了：
+# 既占空间，又可能被 pgrep/旧脚本误启动成第二个实例，所以主动删掉。
+# 旧位置落在当前模块目录内的情况不用处理（模块目录会整体替换）。
+# 同一位置重装时 OLD_BIN_PATH == CUR_BIN，直接跳过，等于覆盖安装。
+if [ -n "$OLD_BIN_PATH" ] && [ -f "$OLD_BIN_PATH" ]; then
+    CUR_BIN="$BINARY_PATH/$BINARY_NAME"
+    if [ "$OLD_BIN_PATH" != "$CUR_BIN" ]; then
+        case "$OLD_BIN_PATH" in
+            "$MODROOT"/*)
+                ;;  # 模块目录内，随安装被替换
+            *)
+                if rm -f "$OLD_BIN_PATH" 2>/dev/null; then
+                    ui_print "🧹 已删除旧位置的二进制：$OLD_BIN_PATH"
+                    OLD_BIN_DIR="$(dirname "$OLD_BIN_PATH")"
+                    # 目录空了就顺手删掉，别留空壳
+                    rmdir "$OLD_BIN_DIR" 2>/dev/null || true
+                else
+                    ui_print "⚠️ 旧位置的二进制删不掉（可能仍在运行）：$OLD_BIN_PATH"
+                fi
+                ;;
+        esac
+    fi
 fi
 
 # 确保控制脚本可执行

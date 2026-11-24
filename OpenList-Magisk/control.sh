@@ -124,6 +124,46 @@ if [ -f "$MIRROR_CONF" ]; then
     [ -n "$_mu" ] && MIRROR_URL="$_mu"
 fi
 
+# ---------- 通道与版本 ----------
+# module.prop 里的 version / versionCode 在两条通道含义不同：
+#   binary 通道（4 个架构包）→ 就是 OpenList 二进制版本，换二进制要跟着改
+#   online 通道（纯在线包）→ 是模块自身版本（日期+流水号），换二进制绝不能动
+# 老包没有 channel 字段，按 updateJson 指向哪份清单兜底推断。
+get_channel() {
+    local ch uj
+    ch="$(sed -n 's/^channel=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
+    if [ -n "$ch" ]; then
+        printf '%s' "$ch"
+        return 0
+    fi
+    uj="$(sed -n 's/^updateJson=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
+    case "$uj" in
+        *update-arm*.json)   printf 'binary' ;;
+        *update-386.json)    printf 'binary' ;;
+        *update-amd64.json)  printf 'binary' ;;
+        *update.json)        printf 'online' ;;
+        *)                   printf 'binary' ;;
+    esac
+}
+
+BIN_VERSION_FILE="$MODDIR/.bin_version"
+
+set_bin_version() { # vX.Y.Z
+    [ -n "${1:-}" ] || return 0
+    printf '%s\n' "$1" > "$BIN_VERSION_FILE" 2>/dev/null || true
+}
+
+# 先看记录文件（切换时写入）；没有就问二进制自己，兜底 unknown。
+# online 包的 module.prop 版本是模块版本，跟这里完全是两回事。
+get_bin_version() {
+    local v
+    v="$(head -n 1 "$BIN_VERSION_FILE" 2>/dev/null | tr -d '\r')"
+    if [ -z "$v" ] && [ -x "$OPENLIST_BINARY" ]; then
+        v="$("$OPENLIST_BINARY" version 2>/dev/null | head -n 1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+    fi
+    printf '%s' "${v:-unknown}"
+}
+
 # ---------- token / API ----------
 TOKEN_CACHE="${TOKEN_CACHE:-/data/local/tmp/openlist_token.cache}"
 
@@ -438,16 +478,21 @@ openlist_pid() {
 
 # ---------- 命令 ----------
 cmd_status() {
-    local pid port ip ver
+    local pid port ip mod_ver bin_ver ch
     pid="$(openlist_pid)"
     port="$(detect_port)"
     ip="$(detect_ip)"
-    ver="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
+    mod_ver="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
+    ch="$(get_channel)"
+    bin_ver="$(get_bin_version)"
     kv running "$([ -n "$pid" ] && echo 1 || echo 0)"
     kv pid "${pid:--}"
     kv port "${port:-5244}"
     kv ip "${ip:-127.0.0.1}"
-    kv version "${ver:-unknown}"
+    kv version "${mod_ver:-unknown}"
+    kv module_version "${mod_ver:-unknown}"
+    kv openlist_version "$bin_ver"
+    kv channel "$ch"
     kv data_dir "$DATA_DIR"
     kv bin "$OPENLIST_BINARY"
     kv module_dir "$MODDIR"
@@ -536,7 +581,7 @@ cmd_check() {
         # API 不可达时用缓存里的最新版本兜底
         cached="$(cache_latest_tag)"
         if [ -n "$cached" ]; then
-            cur="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
+            cur="$(get_bin_version)"
             kv current "${cur:-unknown}"
             kv latest "$cached"
             kv asset "$(pick_asset)"
@@ -552,7 +597,7 @@ cmd_check() {
     tag="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -n 1)"
     rm -f "$f"
     [ -n "$tag" ] || fail "解析最新版本失败"
-    cur="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
+    cur="$(get_bin_version)"
     kv current "${cur:-unknown}"
     kv latest "$tag"
     kv asset "$(pick_asset)"
@@ -906,7 +951,7 @@ cmd_update() {
         fi
     fi
 
-    cur="$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
+    cur="$(get_bin_version)"
     if [ "$cur" = "$tag" ] && [ "$force" != "1" ]; then
         kv current "$cur"
         kv latest "$tag"
@@ -966,17 +1011,27 @@ cmd_update() {
     rm -f "$PROGRESS_FILE"
 
     if [ -n "$(openlist_pid)" ]; then
-        # 启动成功后再同步 module.prop，避免失败时版本号被改花
+        # 二进制版本单独记一份，两条通道都要（WebUI 靠它显示 OpenList 版本）
         case "$tag" in
-            v[0-9]*.[0-9]*.[0-9]*)
-                new_ver="$tag"
-                new_code="$(echo "${tag#v}" | awk -F. '{printf "%d", $1 * 10000 + $2 * 100 + $3}')"
-                sed -i "s/^version=.*/version=$new_ver/" "$MODULE_PROP" 2>/dev/null || true
-                sed -i "s/^versionCode=.*/versionCode=$new_code/" "$MODULE_PROP" 2>/dev/null || true
-                ;;
+            v[0-9]*.[0-9]*.[0-9]*) set_bin_version "$tag" ;;
         esac
+        # 只有 binary 通道的 module.prop 版本 == 二进制版本，才跟着改；
+        # online 通道的 module.prop 版本是模块自身版本（日期+流水号），改了就把它顶掉了。
+        if [ "$(get_channel)" = "binary" ]; then
+            case "$tag" in
+                v[0-9]*.[0-9]*.[0-9]*)
+                    new_ver="$tag"
+                    new_code="$(echo "${tag#v}" | awk -F. '{printf "%d", $1 * 10000 + $2 * 100 + $3}')"
+                    sed -i "s/^version=.*/version=$new_ver/" "$MODULE_PROP" 2>/dev/null || true
+                    sed -i "s/^versionCode=.*/versionCode=$new_code/" "$MODULE_PROP" 2>/dev/null || true
+                    ;;
+            esac
+        fi
         kv previous "$cur"
         kv current "$tag"
+        kv openlist_version "$tag"
+        kv module_version "$(sed -n 's/^version=//p' "$MODULE_PROP" 2>/dev/null | head -n 1)"
+        kv channel "$(get_channel)"
         kv asset "$asset"
         kv result ok
     else
@@ -1100,7 +1155,7 @@ cmd_config_get() {
 }
 
 cmd_config_save() {
-    local b64="${1:-}" raw tmp k v
+    local b64="${1:-}" raw tmp k v old_port new_port
     [ -n "$b64" ] || fail "缺少配置内容"
     raw="$TMP_DIR/openlist_conf.$$.raw"
     tmp="$DATA_DIR/offline.conf.tmp"
@@ -1140,8 +1195,25 @@ cmd_config_save() {
         echo "$k=$v" >> "$tmp"
     done < "$raw"
     rm -f "$raw"
+    # config.json 只在启动时读一次，端口改了必须重启才生效。
+    # 这里记下旧端口，写完后对比，变了就顺手重启，省得用户以为保存没生效。
+    old_port="$(sed -n 's/^PORT=//p' "$DATA_DIR/offline.conf" 2>/dev/null | head -n 1)"
     mv -f "$tmp" "$DATA_DIR/offline.conf" || fail "写入失败"
     chmod 644 "$DATA_DIR/offline.conf" 2>/dev/null || true
+
+    new_port="$(sed -n 's/^PORT=//p' "$DATA_DIR/offline.conf" 2>/dev/null | head -n 1)"
+    kv port "$new_port"
+    if [ "$old_port" != "$new_port" ]; then
+        kv port_changed 1
+        if cmd_restart >/dev/null 2>&1; then
+            kv restarted 1
+        else
+            kv restarted 0
+        fi
+    else
+        kv port_changed 0
+        kv restarted 0
+    fi
     kv result ok
 }
 
