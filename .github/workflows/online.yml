@@ -38,12 +38,16 @@ jobs:
           sudo apt-get install -y zip gh
 
       # ---------- 1. 解析版本号 ----------
-      # 输入只有 8 位日期。同一天重复触发时，读 update.json 里的上一版把流水号 +1。
+      # 输入只有 8 位日期。
       #   显示版本  2026.11.24-1 / 2026.11.24-2 …（每天从 -1 起，次日归零）
       #   versionCode = Unix 日数 × 100 + (流水号 - 1)
-      # 日数递增加上「同一天内序号递增」，保证跨天比较也永远变大，不会判成降级。
+      # 流水号基于「已发布的 Release」判定，而不是 update.json 里写了什么：
+      # 只有同一天已经有同名 Release 才 +1，否则从 1 起。这样 update.json 被提前
+      # 写成待发布版本时不会跳号，重跑一次也不会跳号。
       # 上限：int32 可容纳 2147 万天，约 6 万年，实际不会溢出。
       - name: 解析版本号
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           D="${{ inputs.date }}"
@@ -52,42 +56,26 @@ jobs:
             exit 1
           fi
 
-          python3 - "$D" > "$RUNNER_TEMP/ver.env" <<'PY'
-          import datetime
-          import json
-          import sys
+          DISP=$(python3 -c "import sys,datetime;print(datetime.datetime.strptime(sys.argv[1],'%Y%m%d').strftime('%Y.%m.%d'))" "$D")
+          DAYS=$(python3 -c "import sys,datetime;d=datetime.datetime.strptime(sys.argv[1],'%Y%m%d').date();print((d-datetime.date(1970,1,1)).days)" "$D")
 
-          d = sys.argv[1].strip()
-          dt = datetime.datetime.strptime(d, "%Y%m%d")
-          disp = dt.strftime("%Y.%m.%d")
+          OLD=$(python3 -c "import json;print(json.load(open('update.json')).get('version',''))" 2>/dev/null || true)
+          SEQ=1
+          if [ "${OLD%-*}" = "$DISP" ] && gh release view "$OLD" >/dev/null 2>&1; then
+            SEQ=$(( ${OLD##*-} + 1 ))
+          fi
 
-          # 上一版是什么（仓库里现成的 update.json 就是唯一状态来源）
-          old = ""
-          try:
-              with open("update.json", encoding="utf-8") as f:
-                  old = str(json.load(f).get("version", ""))
-          except Exception:
-              old = ""
+          VER="$DISP-$SEQ"
+          CODE=$(( DAYS * 100 + SEQ - 1 ))
 
-          seq = 1
-          if old.startswith(disp + "-"):
-              try:
-                  seq = int(old.rsplit("-", 1)[1]) + 1
-              except ValueError:
-                  seq = 1
-
-          days = (dt.date() - datetime.date(1970, 1, 1)).days
-          code = days * 100 + (seq - 1)
-
-          print(f"VER={disp}-{seq}")
-          print(f"CODE={code}")
-          print(f"SEQ={seq}")
-          PY
-
-          cat "$RUNNER_TEMP/ver.env"
+          {
+            echo "VER=$VER"
+            echo "CODE=$CODE"
+            echo "SEQ=$SEQ"
+          } | tee "$RUNNER_TEMP/ver.env"
           cat "$RUNNER_TEMP/ver.env" >> "$GITHUB_ENV"
           rm -f "$RUNNER_TEMP/ver.env"
-          echo "版本 ${{ env.VER }} / versionCode ${{ env.CODE }}"
+          echo "版本 $VER / versionCode $CODE"
 
       # ---------- 2. 改写 update.json ----------
       # zipUrl 直接指向该版本 Release 里的 online 包，不用 latest：
