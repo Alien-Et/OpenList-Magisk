@@ -181,12 +181,47 @@ if [ -z "$BIN_SRC" ]; then
         f="$d/openlist-android-$BIN_ARCH.tar.gz"
         [ -f "$f" ] || continue
         ui_print "📂 发现手动放置的压缩包：$f"
-        if tar -xzf "$f" -C "$MODROOT" 2>/dev/null && [ -f "$MODROOT/openlist" ]; then
-            mv -f "$MODROOT/openlist" "$MODROOT/.openlist-fetched" 2>/dev/null
-            BIN_SRC="$MODROOT/.openlist-fetched"
-            BIN_FROM="manual"
-            break
+
+        # 上游的包内文件名是 openlist，但自己打的包常常是 openlist-<arch>，
+        # 甚至任意名字，所以解压到临时目录后按 ELF 头找，不写死文件名。
+        tmpd="$MODROOT/.tarx"
+        rm -rf "$tmpd"; mkdir -p "$tmpd" 2>/dev/null
+
+        if tar -xzf "$f" -C "$tmpd" >/dev/null 2>&1; then
+            cand=""
+            # 先按最常见的一批名字找，找不到再扫一遍
+            for n in openlist "openlist-$BIN_ARCH" "openlist-android-$BIN_ARCH"; do
+                if [ -f "$tmpd/$n" ]; then
+                    cand="$tmpd/$n"
+                    break
+                fi
+            done
+            if [ -z "$cand" ]; then
+                for n in "$tmpd"/*; do
+                    [ -f "$n" ] || continue
+                    case "$n" in
+                        *.tar.gz|*.tgz|*.zip|*.txt|*.md) continue ;;
+                    esac
+                    # ELF magic：7f 45 4c 46
+                    if [ "$(head -c 4 "$n" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "7f454c46" ]; then
+                        cand="$n"
+                        break
+                    fi
+                done
+            fi
+
+            if [ -n "$cand" ] && [ -f "$cand" ]; then
+                cp -f "$cand" "$MODROOT/.openlist-fetched"
+                chmod 755 "$MODROOT/.openlist-fetched"
+                BIN_SRC="$MODROOT/.openlist-fetched"
+                BIN_FROM="manual"
+                ui_print "✅ 压缩包里找到：${cand##*/}"
+                rm -rf "$tmpd"
+                break
+            fi
         fi
+
+        rm -rf "$tmpd"
         ui_print "⚠️ 解压失败，继续尝试在线下载"
     done
 fi

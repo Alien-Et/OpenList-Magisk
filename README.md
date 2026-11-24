@@ -1,6 +1,7 @@
 # OpenList Magisk/KernelSU/APatch 模块
 
-[![Release](https://img.shields.io/github/v/release/Alien-Et/OpenList-Magisk?label=release&sort=semver)](https://github.com/Alien-Et/OpenList-Magisk/releases)
+[![Release (binary)](https://img.shields.io/github/v/release/Alien-Et/OpenList-Magisk?label=release%20%28binary%29&filter=v*&sort=semver)](https://github.com/Alien-Et/OpenList-Magisk/releases)
+[![Release (online)](https://img.shields.io/github/v/release/Alien-Et/OpenList-Magisk?label=release%20%28online%29&filter=2*)](https://github.com/Alien-Et/OpenList-Magisk/releases)
 [![License](https://img.shields.io/github/license/Alien-Et/OpenList-Magisk?label=license)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/LICENSE)
 [![Bundled binary](https://img.shields.io/badge/bundled%20openlist-AGPL--3.0-orange)](https://github.com/Alien-Et/OpenList-Magisk/blob/main/THIRD-PARTY.md)
 [![Arch](https://img.shields.io/badge/arch-arm%20%7C%20arm64-blueviolet)](#系统要求)
