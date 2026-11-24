@@ -413,10 +413,12 @@ body{padding-bottom:calc(116px + env(safe-area-inset-bottom))}
 .tab:active svg{transform:scale(.9)}
 
 /* 面板切换：body 上带 data-tab 时只显示对应分区 */
-body[data-tab="dash"]    [data-tab]:not([data-tab="dash"]),
-body[data-tab="version"] [data-tab]:not([data-tab="version"]),
-body[data-tab="config"]  [data-tab]:not([data-tab="config"]),
-body[data-tab="more"]    [data-tab]:not([data-tab="more"]){display:none}
+/* 面板用 data-pane，导航按钮用 data-tab —— 两组属性分开，
+   否则 [data-tab]:not([data-tab="dash"]) 会把别的 tab 按钮一起隐藏掉 */
+body[data-tab="dash"]    [data-pane]:not([data-pane="dash"]),
+body[data-tab="version"] [data-pane]:not([data-pane="version"]),
+body[data-tab="config"]  [data-pane]:not([data-pane="config"]),
+body[data-tab="more"]    [data-pane]:not([data-pane="more"]){display:none}
 
 /* ── 仪表盘 ── */
 .dash{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:10px}

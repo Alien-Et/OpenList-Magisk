@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="./style.css">
 </head>
 <!-- data-tab 预置 dash：首屏直接只显示仪表盘，避免 JS 执行前所有面板一起闪出来 -->
-<body data-tab="dash">
+<body data-pane="dash">
 
 <div class="top">
   <h1>OpenList</h1>
@@ -17,7 +17,7 @@
 </div>
 
 <!-- 概览：仪表盘 -->
-<div class="dash" data-tab="dash">
+<div class="dash" data-pane="dash">
   <div class="gauge">
     <div class="g-wrap">
       <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -52,14 +52,14 @@
     <div class="g-sub" id="diskDetail">-</div>
   </div>
 </div>
-<div class="dash-sub" data-tab="dash">
+<div class="dash-sub" data-pane="dash">
   <div class="stat"><span>负载 1/5/15</span><b id="loadText">-</b></div>
   <div class="stat"><span>运行时长</span><b id="uptimeText">-</b></div>
   <div class="stat"><span>核心数</span><b id="coresText">-</b></div>
 </div>
 
 <!-- 状态 -->
-<div class="card" data-tab="dash">
+<div class="card" data-pane="dash">
   <div class="row">
     <div class="row left" style="gap:8px">
       <span class="dot" id="stateDot"></span>
@@ -79,8 +79,8 @@
 </div>
 
 <!-- 路径体检 -->
-<h2 data-tab="config">路径体检</h2>
-<div class="card" data-tab="config">
+<h2 data-pane="config">路径体检</h2>
+<div class="card" data-pane="config">
   <div class="scan-group">
     <div class="scan-title">
       <span>二进制</span>
@@ -96,15 +96,15 @@
 </div>
 
 <!-- 所有版本 -->
-<h2 data-tab="version">所有版本</h2>
-<div class="card" data-tab="version">
+<h2 data-pane="version">所有版本</h2>
+<div class="card" data-pane="version">
   <div class="verlist" id="verList">加载中…</div>
   <div class="hint">点「安装」可切换 OpenList 二进制版本。架构包（OpenList(binary)）会同步改回 module.prop 的版本号；纯在线包（OpenList(online)）只换二进制，模块版本号保持不变。</div>
 </div>
 
 <!-- 更新 -->
-<h2 data-tab="version">版本与更新</h2>
-<div class="card" data-tab="version">
+<h2 data-pane="version">版本与更新</h2>
+<div class="card" data-pane="version">
   <div class="kv"><span>模块版本</span><span id="modVer">-</span></div>
   <div class="kv"><span>OpenList 版本</span><span id="curVer">-</span></div>
   <div class="kv"><span>最新版本</span><span id="latestVer">-</span></div>
@@ -120,8 +120,8 @@
 </div>
 
 <!-- 下载镜像 -->
-<h2 data-tab="version">下载镜像</h2>
-<div class="card" data-tab="version">
+<h2 data-pane="version">下载镜像</h2>
+<div class="card" data-pane="version">
   <label>镜像选择</label>
   <div class="select" id="mirrorSelect" data-value="auto">
     <button type="button" class="select-btn">自动选择</button>
@@ -137,8 +137,8 @@
 </div>
 
 <!-- 下载配置 -->
-<h2 data-tab="config">下载配置</h2>
-<div class="card" data-tab="config">
+<h2 data-pane="config">下载配置</h2>
+<div class="card" data-pane="config">
   <label for="cfgPort">监听端口</label>
   <input id="cfgPort" inputmode="numeric" placeholder="5244">
   <label for="cfgToken">管理 Token</label>
@@ -174,8 +174,8 @@
 </div>
 
 <!-- 改密 -->
-<h2 data-tab="config">管理员账号</h2>
-<div class="card" data-tab="config">
+<h2 data-pane="config">管理员账号</h2>
+<div class="card" data-pane="config">
   <label for="newUser">用户名（留空则不修改）</label>
   <input id="newUser" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="admin">
   <label for="newPwd">新密码</label>
@@ -190,8 +190,8 @@
 </div>
 
 <!-- 存储 -->
-<h2 data-tab="more">存储</h2>
-<div class="card" data-tab="more">
+<h2 data-pane="more">存储</h2>
+<div class="card" data-pane="more">
   <div id="storageList" class="muted">加载中…</div>
   <div class="btns">
     <button class="ghost" id="storageRefresh">刷新</button>
@@ -200,8 +200,8 @@
 </div>
 
 <!-- 离线任务 -->
-<h2 data-tab="more">离线任务</h2>
-<div class="card" data-tab="more">
+<h2 data-pane="more">离线任务</h2>
+<div class="card" data-pane="more">
   <div id="taskList" class="muted">加载中…</div>
   <div class="btns">
     <button class="ghost" id="taskRefresh">刷新</button>
@@ -209,8 +209,8 @@
 </div>
 
 <!-- 迁移 -->
-<h2 data-tab="config">迁移</h2>
-<div class="card" data-tab="config">
+<h2 data-pane="config">迁移</h2>
+<div class="card" data-pane="config">
   <details>
     <summary>数据目录迁移</summary>
     <div class="chips" id="dataDirChips">
@@ -240,8 +240,8 @@
 </div>
 
 <!-- 日志 -->
-<h2 data-tab="more">服务日志</h2>
-<div class="card" data-tab="more">
+<h2 data-pane="more">服务日志</h2>
+<div class="card" data-pane="more">
   <div class="chips" id="logTabs">
     <button type="button" class="chip-btn active" data-log="service">服务日志</button>
     <button type="button" class="chip-btn" data-log="openlist">程序输出</button>
@@ -254,8 +254,8 @@
 </div>
 
 <!-- 关于 -->
-<h2 data-tab="more">关于</h2>
-<div class="card" data-tab="more">
+<h2 data-pane="more">关于</h2>
+<div class="card" data-pane="more">
   <div class="row">
     <a class="link" href="https://github.com/Alien-Et/OpenList-Magisk" target="_blank" rel="noreferrer">项目地址</a>
     <a class="link" href="https://github.com/Alien-Et/OpenList-Magisk/releases/latest" target="_blank" rel="noreferrer">Release</a>
