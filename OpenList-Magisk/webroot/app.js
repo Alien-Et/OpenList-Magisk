@@ -187,7 +187,7 @@
     var kv = (r && r.kv) || {};
     var raw = (r && r.raw) || {};
     if (kv.error) return kv.error;
-    if (raw.stderr === 'TIMEOUT') return '命令执行超时（宿主没有返回结果）';
+    if (raw.stderr === 'TIMEOUT') return '检查超时：GitHub API 太慢或不可达，稍后重试；下载二进制仍可走镜像';
     if (raw.stderr && raw.stderr !== 'NO_KSU') return String(raw.stderr).slice(0, 300);
     if (raw.errno != null && raw.errno !== 0 && raw.errno !== -1) return '命令退出码 ' + raw.errno;
     return fallback || '操作失败';
@@ -281,9 +281,7 @@
     $('stateText').textContent = state.running === '1' ? '运行中' : '已停止';
     $('pidText').textContent = 'PID ' + state.pid;
     $('addrText').textContent = state.running === '1' ? ('http://' + state.ip + ':' + state.port) : '未运行';
-    setPath('dataDirText', kv.data_dir);
-    setPath('modDirText', kv.module_dir || MODDIR);
-    setPath('binText', kv.bin);
+    // 目录卡片已合并进「路径体检」，这里不再单独渲染
     $('modVer').textContent = state.moduleVersion;
     $('curVer').textContent = state.version;
     if (kv.abi) $('abiText').textContent = kv.abi;
@@ -436,7 +434,7 @@
       b.disabled = true;
       $('updateHint').textContent = '正在查询 GitHub…';
     }
-    return ctl('check', 30000).then(function (r) {
+    return ctl('check', 45000).then(function (r) {
       var kv = r.kv;
       if (kv.result !== 'ok') {
         var why = whyOf(r, 'GitHub 不可达');

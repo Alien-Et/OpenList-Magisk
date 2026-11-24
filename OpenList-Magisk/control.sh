@@ -155,11 +155,16 @@ set_bin_version() { # vX.Y.Z
 
 # 先看记录文件（切换时写入）；没有就问二进制自己，兜底 unknown。
 # online 包的 module.prop 版本是模块版本，跟这里完全是两回事。
+# 二进制调用加 3 秒上限：check 是高频操作，二进制万一卡住不能把整个命令拖超时。
 get_bin_version() {
     local v
     v="$(head -n 1 "$BIN_VERSION_FILE" 2>/dev/null | tr -d '\r')"
     if [ -z "$v" ] && [ -x "$OPENLIST_BINARY" ]; then
-        v="$("$OPENLIST_BINARY" version 2>/dev/null | head -n 1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+        if have timeout; then
+            v="$(timeout 3 "$OPENLIST_BINARY" version 2>/dev/null | head -n 1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+        else
+            v="$("$OPENLIST_BINARY" version 2>/dev/null | head -n 1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+        fi
     fi
     printf '%s' "${v:-unknown}"
 }
@@ -218,25 +223,25 @@ gh_api() { # url outfile
     : > "$out" 2>/dev/null
     if have curl; then
         if [ -n "$GH_TOKEN" ]; then
-            code="$(curl -sSL --compressed --connect-timeout 8 -m 20 -o "$out" -w '%{http_code}' \
+            code="$(curl -sSL --compressed --connect-timeout 4 -m 12 -o "$out" -w '%{http_code}' \
                 -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" \
                 -H "Authorization: Bearer $GH_TOKEN" "$url" 2>/dev/null)" || code=""
         else
-            code="$(curl -sSL --compressed --connect-timeout 8 -m 20 -o "$out" -w '%{http_code}' \
+            code="$(curl -sSL --compressed --connect-timeout 4 -m 12 -o "$out" -w '%{http_code}' \
                 -H "User-Agent: OpenList-Magisk" -H "Accept: application/vnd.github+json" \
                 "$url" 2>/dev/null)" || code=""
         fi
     elif [ -n "$BB" ]; then
         if [ -n "$GH_TOKEN" ]; then
-            "$BB" wget -q -T 30 -O "$out" --header="User-Agent: OpenList-Magisk" \
+            "$BB" wget -q -T 12 -O "$out" --header="User-Agent: OpenList-Magisk" \
                 --header="Accept: application/vnd.github+json" \
                 --header="Authorization: Bearer $GH_TOKEN" "$url" 2>/dev/null && code="200"
         else
-            "$BB" wget -q -T 30 -O "$out" --header="User-Agent: OpenList-Magisk" \
+            "$BB" wget -q -T 12 -O "$out" --header="User-Agent: OpenList-Magisk" \
                 --header="Accept: application/vnd.github+json" "$url" 2>/dev/null && code="200"
         fi
     elif have wget; then
-        wget -q -T 30 -O "$out" --header="User-Agent: OpenList-Magisk" "$url" 2>/dev/null && code="200"
+        wget -q -T 12 -O "$out" --header="User-Agent: OpenList-Magisk" "$url" 2>/dev/null && code="200"
     fi
     [ -n "$code" ] || code="000"
     printf '%s' "$code"
