@@ -263,7 +263,7 @@ jobs:
           echo "${{ env.OPENLIST_CHANGELOG }}" >> release_notes.txt
 
           if gh release view "$V" &>/dev/null; then
-            # Release 可能是 online.yml 先建的（只有 online.zip），这里补架构资产与上游日志
+            # 该 tag 下已有 Release 时（例如之前手动补传过），只补上传架构资产，不重建
             echo "Release $V 已存在，补上传架构包"
             gh release upload "$V" $FILES --clobber
 

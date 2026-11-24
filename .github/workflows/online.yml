@@ -1,16 +1,19 @@
 name: 发布纯在线包
 
-# 职责：只补一个 openlist-magisk-online.zip（不含二进制）到对应版本的 Release，
-# 并改写 update.json。架构包由 1.yml 负责，两者往同一个 Release 挂不同资产。
+# 职责：只补一个 openlist-magisk-online.zip（不含二进制）到自己的日期版本 Release，
+# 并改写 update.json。架构包由 1.yml 负责，用上游版本号，各占一个 Release，互不覆盖。
 #
-# 触发：手动触发，填模块版本号。版本号等于上游已发布版本时，直接补到这个 Release；
-# 版本号领先上游时，新建 Release（自动建同名 tag），等上游追上来后 1.yml 再补架构包。
+# 触发：手动触发，只填 8 位日期。同一天重复触发时，CI 读 update.json 里的上一版
+# 自动把流水号 +1，所以一天可以发多版，你不需要自己记发到第几版。
+#
+# 版本号形如 2026.11.24-1、2026.11.24-2，每天从 -1 起，第二天归零。
+# versionCode = Unix 日数 × 100 + (流水号 - 1)，跨天也严格递增，不会撞号。
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: '模块版本号，例如 v4.2.11（不带任何前缀）'
+      date:
+        description: '发布日期的 8 位数字，例如 20261124（同一天再发会自动变 -2、-3）'
         required: true
         type: string
       notes:
@@ -35,19 +38,56 @@ jobs:
           sudo apt-get install -y zip gh
 
       # ---------- 1. 解析版本号 ----------
+      # 输入只有 8 位日期。同一天重复触发时，读 update.json 里的上一版把流水号 +1。
+      #   显示版本  2026.11.24-1 / 2026.11.24-2 …（每天从 -1 起，次日归零）
+      #   versionCode = Unix 日数 × 100 + (流水号 - 1)
+      # 日数递增加上「同一天内序号递增」，保证跨天比较也永远变大，不会判成降级。
+      # 上限：int32 可容纳 2147 万天，约 6 万年，实际不会溢出。
       - name: 解析版本号
         run: |
           set -e
-          V="${{ inputs.version }}"
-          case "$V" in
-            v[0-9]*) ;;
-            *) echo "::error::版本号格式不对：$V（应为 vX.Y.Z）"; exit 1 ;;
-          esac
-          NUM="${V#v}"
-          CODE=$(echo "$NUM" | awk -F. '{print $1 * 10000 + $2 * 100 + $3}')
-          echo "VER=$V"     >> $GITHUB_ENV
-          echo "CODE=$CODE" >> $GITHUB_ENV
-          echo "版本 $V / versionCode $CODE"
+          D="${{ inputs.date }}"
+          if ! printf '%s' "$D" | grep -Eq '^[0-9]{8}$'; then
+            echo "::error::日期格式不对：$D（应为 8 位数字，例如 20261124）"
+            exit 1
+          fi
+
+          python3 - "$D" > "$RUNNER_TEMP/ver.env" <<'PY'
+          import datetime
+          import json
+          import sys
+
+          d = sys.argv[1].strip()
+          dt = datetime.datetime.strptime(d, "%Y%m%d")
+          disp = dt.strftime("%Y.%m.%d")
+
+          # 上一版是什么（仓库里现成的 update.json 就是唯一状态来源）
+          old = ""
+          try:
+              with open("update.json", encoding="utf-8") as f:
+                  old = str(json.load(f).get("version", ""))
+          except Exception:
+              old = ""
+
+          seq = 1
+          if old.startswith(disp + "-"):
+              try:
+                  seq = int(old.rsplit("-", 1)[1]) + 1
+              except ValueError:
+                  seq = 1
+
+          days = (dt.date() - datetime.date(1970, 1, 1)).days
+          code = days * 100 + (seq - 1)
+
+          print(f"VER={disp}-{seq}")
+          print(f"CODE={code}")
+          print(f"SEQ={seq}")
+          PY
+
+          cat "$RUNNER_TEMP/ver.env"
+          cat "$RUNNER_TEMP/ver.env" >> "$GITHUB_ENV"
+          rm -f "$RUNNER_TEMP/ver.env"
+          echo "版本 ${{ env.VER }} / versionCode ${{ env.CODE }}"
 
       # ---------- 2. 改写 update.json ----------
       # zipUrl 直接指向该版本 Release 里的 online 包，不用 latest：
