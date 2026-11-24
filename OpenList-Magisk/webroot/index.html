@@ -6,7 +6,8 @@
 <title>OpenList 控制台</title>
 <link rel="stylesheet" href="./style.css">
 </head>
-<body>
+<!-- data-tab 预置 dash：首屏直接只显示仪表盘，避免 JS 执行前所有面板一起闪出来 -->
+<body data-tab="dash">
 
 <div class="top">
   <h1>OpenList</h1>
@@ -16,7 +17,7 @@
 </div>
 
 <!-- 概览：仪表盘 -->
-<div class="dash" data-tab="overview">
+<div class="dash" data-tab="dash">
   <div class="gauge">
     <div class="g-wrap">
       <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -51,14 +52,14 @@
     <div class="g-sub" id="diskDetail">-</div>
   </div>
 </div>
-<div class="dash-sub" data-tab="overview">
+<div class="dash-sub" data-tab="dash">
   <div class="stat"><span>负载 1/5/15</span><b id="loadText">-</b></div>
   <div class="stat"><span>运行时长</span><b id="uptimeText">-</b></div>
   <div class="stat"><span>核心数</span><b id="coresText">-</b></div>
 </div>
 
 <!-- 状态 -->
-<div class="card" data-tab="overview">
+<div class="card" data-tab="dash">
   <div class="row">
     <div class="row left" style="gap:8px">
       <span class="dot" id="stateDot"></span>
@@ -78,8 +79,8 @@
 </div>
 
 <!-- 路径体检 -->
-<h2 data-tab="data">路径体检</h2>
-<div class="card" data-tab="data">
+<h2 data-tab="config">路径体检</h2>
+<div class="card" data-tab="config">
   <div class="scan-group">
     <div class="scan-title">
       <span>二进制</span>
@@ -102,8 +103,8 @@
 </div>
 
 <!-- 更新 -->
-<h2 data-tab="overview">版本与更新</h2>
-<div class="card" data-tab="overview">
+<h2 data-tab="version">版本与更新</h2>
+<div class="card" data-tab="version">
   <div class="kv"><span>模块版本</span><span id="modVer">-</span></div>
   <div class="kv"><span>OpenList 版本</span><span id="curVer">-</span></div>
   <div class="kv"><span>最新版本</span><span id="latestVer">-</span></div>
@@ -189,8 +190,8 @@
 </div>
 
 <!-- 存储 -->
-<h2 data-tab="data">存储</h2>
-<div class="card" data-tab="data">
+<h2 data-tab="more">存储</h2>
+<div class="card" data-tab="more">
   <div id="storageList" class="muted">加载中…</div>
   <div class="btns">
     <button class="ghost" id="storageRefresh">刷新</button>
@@ -199,8 +200,8 @@
 </div>
 
 <!-- 离线任务 -->
-<h2 data-tab="data">离线任务</h2>
-<div class="card" data-tab="data">
+<h2 data-tab="more">离线任务</h2>
+<div class="card" data-tab="more">
   <div id="taskList" class="muted">加载中…</div>
   <div class="btns">
     <button class="ghost" id="taskRefresh">刷新</button>
@@ -208,8 +209,8 @@
 </div>
 
 <!-- 迁移 -->
-<h2 data-tab="data">迁移</h2>
-<div class="card" data-tab="data">
+<h2 data-tab="config">迁移</h2>
+<div class="card" data-tab="config">
   <details>
     <summary>数据目录迁移</summary>
     <div class="chips" id="dataDirChips">
@@ -239,8 +240,8 @@
 </div>
 
 <!-- 日志 -->
-<h2 data-tab="log">服务日志</h2>
-<div class="card" data-tab="log">
+<h2 data-tab="more">服务日志</h2>
+<div class="card" data-tab="more">
   <div class="chips" id="logTabs">
     <button type="button" class="chip-btn active" data-log="service">服务日志</button>
     <button type="button" class="chip-btn" data-log="openlist">程序输出</button>
@@ -253,8 +254,8 @@
 </div>
 
 <!-- 关于 -->
-<h2 data-tab="log">关于</h2>
-<div class="card" data-tab="log">
+<h2 data-tab="more">关于</h2>
+<div class="card" data-tab="more">
   <div class="row">
     <a class="link" href="https://github.com/Alien-Et/OpenList-Magisk" target="_blank" rel="noreferrer">项目地址</a>
     <a class="link" href="https://github.com/Alien-Et/OpenList-Magisk/releases/latest" target="_blank" rel="noreferrer">Release</a>
@@ -262,19 +263,22 @@
 </div>
 
 <nav class="tabbar" id="tabbar">
-  <button class="tab on" data-tab="overview">
+  <button class="tab on" data-tab="dash">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-      <rect x="14" y="14" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+      <path d="M12 21a9 9 0 100-18 9 9 0 000 18z"></path>
+      <path d="M12 12l4.2-4.2"></path>
+      <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"></circle>
     </svg>
-    <span>概览</span>
+    <span>仪表盘</span>
   </button>
   <button class="tab" data-tab="version">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M20.59 13.41l-7.18 7.18a2 2 0 01-2.82 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"></path>
-      <circle cx="7" cy="7" r="1.2"></circle>
+      <line x1="6" y1="4" x2="6" y2="15"></line>
+      <circle cx="6" cy="18" r="3"></circle>
+      <circle cx="18" cy="6" r="3"></circle>
+      <path d="M18 9a9 9 0 01-9 9"></path>
     </svg>
-    <span>版本</span>
+    <span>版本控制</span>
   </button>
   <button class="tab" data-tab="config">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -285,21 +289,13 @@
     </svg>
     <span>配置</span>
   </button>
-  <button class="tab" data-tab="data">
+  <button class="tab" data-tab="more">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+      <circle cx="5" cy="12" r="1.7"></circle>
+      <circle cx="12" cy="12" r="1.7"></circle>
+      <circle cx="19" cy="12" r="1.7"></circle>
     </svg>
-    <span>数据</span>
-  </button>
-  <button class="tab" data-tab="log">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
-      <polyline points="14 2 14 8 20 8"></polyline>
-      <line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line>
-    </svg>
-    <span>日志</span>
+    <span>更多</span>
   </button>
 </nav>
 

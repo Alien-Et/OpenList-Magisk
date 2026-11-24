@@ -1453,7 +1453,7 @@
 
   function loadStats() {
     if (document.hidden) return Promise.resolve();
-    if (document.body.getAttribute('data-tab') !== 'overview') return Promise.resolve();
+    if (document.body.getAttribute('data-tab') !== 'dash') return Promise.resolve();
     return ctl('stats', 20000).then(function (r) {
       if (r.kv && r.kv.result === 'ok') renderStats(r.kv);
     }).catch(function () { /* 单次失败不打扰用户，下个周期再试 */ });
@@ -1471,14 +1471,13 @@
 
   /* ---------- 底部导航 ---------- */
   var TAB_KEY = 'openlist.tab';
-  var TAB_NAMES = ['overview', 'version', 'config', 'data', 'log'];
+  var TAB_NAMES = ['dash', 'version', 'config', 'more'];
 
   function onTabEnter(tab) {
-    if (tab === 'overview') startStats(); else stopStats();
+    if (tab === 'dash') startStats(); else stopStats();
     if (tab === 'version') { loadVersions(); checkUpdate(true); }
-    else if (tab === 'config') loadConfig();
-    else if (tab === 'data') { loadScan(); loadStorages(); loadTasks(); }
-    else if (tab === 'log') loadLog();
+    else if (tab === 'config') { loadConfig(); loadScan(); }
+    else if (tab === 'more') { loadStorages(); loadTasks(); loadLog(); }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -1488,7 +1487,7 @@
     var btns = bar.querySelectorAll('.tab');
 
     function apply(tab) {
-      if (TAB_NAMES.indexOf(tab) < 0) tab = 'overview';
+      if (TAB_NAMES.indexOf(tab) < 0) tab = 'dash';
       document.body.setAttribute('data-tab', tab);
       for (var i = 0; i < btns.length; i++) {
         btns[i].classList.toggle('on', btns[i].getAttribute('data-tab') === tab);
@@ -1506,13 +1505,20 @@
       })(btns[i]);
     }
 
+    // 滚动时导航栏轻微上浮，强化“悬浮”质感
+    var scrolled = false;
+    window.addEventListener('scroll', function () {
+      var u = (window.scrollY || document.documentElement.scrollTop || 0) > 40;
+      if (u !== scrolled) { scrolled = u; bar.classList.toggle('up', u); }
+    }, { passive: true });
+
     var saved = '';
     try { saved = localStorage.getItem(TAB_KEY) || ''; } catch (e) {}
-    var start = TAB_NAMES.indexOf(saved) >= 0 ? saved : 'overview';
+    var start = TAB_NAMES.indexOf(saved) >= 0 ? saved : 'dash';
     apply(start);
     // 初始不重复触发 onTabEnter 的加载（init 里已经全量拉过一轮），
     // 只保证概览页的仪表盘轮询起来
-    if (start === 'overview') startStats();
+    if (start === 'dash') startStats();
   }
 
   /* ---------- 绑定 ---------- */
