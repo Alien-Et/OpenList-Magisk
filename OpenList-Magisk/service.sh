@@ -144,6 +144,16 @@ get_port() {
     echo "" > "$TEMP_PORT_FILE"
 }
 
+# module.prop 的 description 里要显示二进制版本号：
+# 优先用本次启动已经算出的 BIN_VER，其次读两处 .bin_version
+# （模块目录那份每次升级都会丢，数据目录那份能留住）。
+desc_ver() {
+    local v="${BIN_VER:-}"
+    [ -n "$v" ] || v="$(head -n 1 "$MODDIR/.bin_version" 2>/dev/null | tr -d '\r')"
+    [ -n "$v" ] || v="$(head -n 1 "$DATA_DIR/.bin_version" 2>/dev/null | tr -d '\r')"
+    printf '%s' "${v:-版本未知}"
+}
+
 update_module_prop_running() {
     # 异步执行 IP 和端口获取
     get_lan_ip &
@@ -151,7 +161,7 @@ update_module_prop_running() {
     pid=$(pgrep -f "$OPENLIST_BINARY server --data" 2>/dev/null | head -n 1)
     if [ -z "$pid" ]; then
         log "错误: 未找到运行中的 openlist"
-        NEW_DESC="description=【未运行】无法找到 openlist 进程，请检查日志 $LOG_FILE"
+        NEW_DESC="description=【未运行】OpenList $(desc_ver) | 找不到进程，详见 $LOG_FILE"
         # 直接更新 module.prop 并返回
         grep -v '^description=' "$MODULE_PROP_FILE" > "${MODULE_PROP_FILE}.tmp" 2>/dev/null
         echo "$NEW_DESC" >> "${MODULE_PROP_FILE}.tmp"
@@ -193,10 +203,10 @@ update_module_prop_running() {
         log "最终端口: $port"
 
         if [ -n "$port" ] && [ "$CURRENT_IP" != "无法获取IP" ]; then
-            NEW_DESC="description=【运行中】当前地址：http://${CURRENT_IP}:${port} | PID:$pid | 数据目录：${DATA_DIR} | 点击▲操作关闭程序"
+            NEW_DESC="description=【运行中】OpenList $(desc_ver) | http://${CURRENT_IP}:${port} | PID:$pid"
         else
             log "错误: IP 或端口获取失败 (IP: $CURRENT_IP, 端口: $port)"
-            NEW_DESC="description=【运行中】无法检测 openlist 地址（IP: $CURRENT_IP, 端口: $port，PID:$pid），请检查日志 $LOG_FILE | 数据目录：${DATA_DIR} | 点击▲操作关闭程序"
+            NEW_DESC="description=【运行中】OpenList $(desc_ver) | 地址未取到（IP:$CURRENT_IP 端口:$port PID:$pid），详见 $LOG_FILE"
         fi
     fi
 

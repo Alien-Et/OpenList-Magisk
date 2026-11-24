@@ -45,7 +45,14 @@ check_openlist_status() {
 
 # 更新模块状态为“已停止”
 update_module_prop_stopped() {
-    "$BUSYBOX" sed -i "s|^description=.*|description=【已停止】请点击\"操作\"启动程序。项目地址：${REPO_URL}|" "$MODULE_PROP"
+    # 已停止时也把二进制版本显示出来；两处 .bin_version 都读一下
+    # （模块目录那份每次升级都会丢，所以再兜到数据目录）
+    local v data_dir
+    data_dir="$(sed -n 's/^DATA_DIR="\(.*\)"/\1/p' "$SERVICE_SH" 2>/dev/null | head -n 1)"
+    v="$(head -n 1 "$MODDIR/.bin_version" 2>/dev/null | tr -d '\r')"
+    [ -n "$v" ] || v="$(head -n 1 "$data_dir/.bin_version" 2>/dev/null | tr -d '\r')"
+    [ -n "$v" ] || v="版本未知"
+    "$BUSYBOX" sed -i "s#^description=.*#description=【已停止】OpenList $v | 点\"操作\"启动#" "$MODULE_PROP"
 }
 
 # 主逻辑：启停服务

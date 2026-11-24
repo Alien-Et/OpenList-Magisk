@@ -157,7 +157,7 @@ OpenList Magisk 模块将 [OpenList](https://github.com/OpenListTeam/OpenList) �
 
 - 开机自动启动：`late_start` 阶段先等 `sys.boot_completed`（最多 120 秒），数据目录在 `/sdcard` 或 `/storage` 时再等它可写（最多 180 秒），然后才拉起服务
 - 管理器里点「操作」按钮（`action.sh`）可手动启停
-- 状态写在 `module.prop` 的 description 里：运行时显示地址和 PID，停止时显示提示
+- 状态写在 `module.prop` 的 description 里：运行时显示「【运行中】OpenList vX.Y.Z | 地址 | PID」，停止时显示「【已停止】OpenList vX.Y.Z | 点"操作"启动」
 
 ### WebUI 控制台
 

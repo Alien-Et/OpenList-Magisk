@@ -626,7 +626,10 @@ cmd_status() {
 
 update_desc_stopped() {
     [ -f "$MODULE_PROP" ] || return 0
-    sed -i 's|^description=.*|description=【已停止】请点击"操作"启动程序。项目地址：https://github.com/Alien-Et/OpenList-Magisk|' "$MODULE_PROP" 2>/dev/null || true
+    local v
+    v="$(get_bin_version)"
+    [ "$v" = "unknown" ] && v="版本未知"
+    sed -i "s#^description=.*#description=【已停止】OpenList $v | 点\"操作\"启动#" "$MODULE_PROP" 2>/dev/null || true
 }
 
 cmd_stop() {
