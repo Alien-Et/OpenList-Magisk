@@ -52,7 +52,7 @@
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0;min-height:100%;max-width:100%;overflow-x:hidden}
+html,body{margin:0;padding:0;min-height:100%}
 
 body{
   position:relative;
@@ -366,7 +366,7 @@ button.mini{
 .scanconfirm .hint{color:var(--err);word-break:break-all;margin:0}
 
 /* ── 底部悬浮导航（大圆角 / 磨砂玻璃） ── */
-body{padding-bottom:calc(116px + env(safe-area-inset-bottom))}
+body{padding-bottom:116px;padding-bottom:calc(116px + env(safe-area-inset-bottom))}
 
 .tabbar{
   position:fixed;
@@ -374,6 +374,7 @@ body{padding-bottom:calc(116px + env(safe-area-inset-bottom))}
      left:50% + translateX(-50%) 在部分 WebView 里算出的宽度会超过视口，
      超出的部分既把导航条推出屏幕，又给整页制造横向溢出（卡片右侧被裁）。 */
   left:14px;right:14px;margin:0 auto;max-width:572px;
+  bottom:14px;
   bottom:calc(14px + env(safe-area-inset-bottom));
   z-index:60;
   display:flex;align-items:stretch;gap:2px;
