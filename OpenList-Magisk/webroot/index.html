@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>OpenList 控制台</title>
-<link rel="stylesheet" href="./style.css">
+<!-- 改 app.js / style.css 后把下面的 v= 一起改掉，否则 WebView 会复用缓存里的旧文件 -->
+<link rel="stylesheet" href="./style.css?v=20261124c">
 </head>
 <!-- data-tab 预置 dash：首屏直接只显示仪表盘，避免 JS 执行前所有面板一起闪出来 -->
 <body data-pane="dash">
@@ -300,6 +301,6 @@
 </nav>
 
 <div class="toast" id="toast"></div>
-<script src="./app.js"></script>
+<script src="./app.js?v=20261124c"></script>
 </body>
 </html>
