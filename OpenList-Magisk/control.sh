@@ -224,26 +224,59 @@ get_channel() {
 }
 
 BIN_VERSION_FILE="$MODDIR/.bin_version"
+# 模块目录每次升级都会被整体替换，.bin_version 会丢；数据目录不随模块升级变化，
+# 所以在数据目录再存一份，升级后仍能显示「当前二进制版本」。
+BIN_VERSION_CACHE="$DATA_DIR/.bin_version"
 
 set_bin_version() { # vX.Y.Z
     [ -n "${1:-}" ] || return 0
     printf '%s\n' "$1" > "$BIN_VERSION_FILE" 2>/dev/null || true
+    if [ -n "${BIN_VERSION_CACHE:-}" ] && [ -d "$DATA_DIR" ]; then
+        printf '%s\n' "$1" > "$BIN_VERSION_CACHE" 2>/dev/null || true
+    fi
+}
+
+# 从二进制自身读出「vX.Y.Z」。不同版本对参数的支持不一致（version / --version / -v），
+# 而且输出首行未必是版本（可能有日志、空行、颜色码），所以逐个参数试、再多看几行。
+# 返回时不带 v 前缀，由调用方统一规范化。
+bin_version_raw() {
+    local args out
+    [ -x "${OPENLIST_BINARY:-}" ] || return 1
+    for args in version --version -v; do
+        if have timeout; then
+            out="$(timeout 3 "$OPENLIST_BINARY" $args 2>/dev/null | head -n 5)"
+        else
+            out="$("$OPENLIST_BINARY" $args 2>/dev/null | head -n 5)"
+        fi
+        out="$(printf '%s' "$out" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+        if [ -n "$out" ]; then
+            printf '%s' "$out"
+            return 0
+        fi
+    done
+    return 1
 }
 
 # 先看记录文件（切换时写入）；没有就问二进制自己，兜底 unknown。
 # online 包的 module.prop 版本是模块版本，跟这里完全是两回事。
 # 二进制调用加 3 秒上限：check 是高频操作，二进制万一卡住不能把整个命令拖超时。
 get_bin_version() {
-    local v
-    v="$(head -n 1 "$BIN_VERSION_FILE" 2>/dev/null | tr -d '\r')"
-    if [ -z "$v" ] && [ -x "$OPENLIST_BINARY" ]; then
-        if have timeout; then
-            v="$(timeout 3 "$OPENLIST_BINARY" version 2>/dev/null | head -n 1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
-        else
-            v="$("$OPENLIST_BINARY" version 2>/dev/null | head -n 1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
-        fi
+    local v f
+    # 依次看模块目录、数据目录（升级后模块目录那份会消失）
+    for f in "$BIN_VERSION_FILE" "$BIN_VERSION_CACHE"; do
+        [ -n "${f:-}" ] || continue
+        v="$(head -n 1 "$f" 2>/dev/null | tr -d '\r' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+        [ -n "$v" ] && break
+    done
+    if [ -z "$v" ]; then
+        v="$(bin_version_raw)"
+        [ -n "$v" ] && set_bin_version "v$v"
     fi
-    printf '%s' "${v:-unknown}"
+    case "$v" in
+        '') printf 'unknown' ; return 0 ;;
+        v*) printf '%s' "$v" ;;
+        *)  printf 'v%s' "$v" ;;
+    esac
 }
 
 # ---------- token / API ----------

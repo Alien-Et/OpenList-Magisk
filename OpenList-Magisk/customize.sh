@@ -391,6 +391,13 @@ ui_print " "
 ui_print "📢 数据目录设置"
 ui_print "━━━━━━━━━━━━━━━━━━━━━━"
 ui_print "✓ 已选择: $DATA_DIR"
+
+# 二进制版本在数据目录再存一份：模块目录每次升级都被整体替换，只有数据目录这份能留住，
+# 否则升级重启后 WebUI 会显示「OpenList 版本 unknown」、版本列表也没有「当前」标记。
+if [ -n "${BIN_VER_NOW:-}" ] && [ -d "$DATA_DIR" ]; then
+    printf '%s\n' "$BIN_VER_NOW" > "$DATA_DIR/.bin_version" 2>/dev/null || true
+fi
+
 ui_print "ℹ️ 说明："
 ui_print "1. 新数据目录在下次启动时生效"
 if [ "$MIGRATE" = "1" ]; then

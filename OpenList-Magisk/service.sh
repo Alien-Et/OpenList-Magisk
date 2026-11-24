@@ -319,6 +319,15 @@ OPENLIST_PID=$!
 
 if ps -p $OPENLIST_PID >/dev/null || pgrep -f "$OPENLIST_BINARY server --data" >/dev/null; then
     log "OpenList 服务启动成功 (PID: $OPENLIST_PID)"
+    # 记录这份二进制的版本，WebUI 靠它显示「OpenList 版本」和「所有版本」里的「当前」标记。
+    # 模块目录每次升级都会被整体替换，所以在数据目录再存一份，升级后不会退化成 unknown。
+    BIN_VER="$("$OPENLIST_BINARY" version 2>/dev/null | head -n 5 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+    if [ -n "$BIN_VER" ]; then
+        case "$BIN_VER" in v*) ;; *) BIN_VER="v$BIN_VER" ;; esac
+        printf '%s\n' "$BIN_VER" > "$MODDIR/.bin_version" 2>/dev/null || true
+        [ -d "$DATA_DIR" ] && printf '%s\n' "$BIN_VER" > "$DATA_DIR/.bin_version" 2>/dev/null || true
+        log "二进制版本: $BIN_VER"
+    fi
     update_module_prop_running
 else
     log "错误: 无法启动 OpenList 服务"

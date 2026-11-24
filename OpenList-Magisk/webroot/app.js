@@ -283,16 +283,19 @@
     //   module_version    = module.prop 的 version（online 是日期+流水号，binary 是 OpenList 版本）
     //   openlist_version  = 当前这份二进制自己的版本
     state.moduleVersion = kv.module_version || kv.version || '-';
-    state.version = kv.openlist_version || '-';
+    // 二进制版本识别不到时内部用空串表示未知，界面上说清楚怎么恢复，
+    // 而不是甩一个 unknown 给用户。
+    var ovRaw = String(kv.openlist_version || '').trim();
+    state.version = normVer(ovRaw) ? ovRaw : '';
 
-    $('verChip').textContent = state.version;
+    $('verChip').textContent = state.version || '未识别';
     $('stateDot').className = 'dot ' + (state.running === '1' ? 'on' : 'off');
     $('stateText').textContent = state.running === '1' ? '运行中' : '已停止';
     $('pidText').textContent = 'PID ' + state.pid;
     $('addrText').textContent = state.running === '1' ? ('http://' + state.ip + ':' + state.port) : '未运行';
     // 目录卡片已合并进「路径体检」，这里不再单独渲染
     $('modVer').textContent = state.moduleVersion;
-    $('curVer').textContent = state.version;
+    $('curVer').textContent = state.version || '未识别（重启服务后自动识别）';
     if (kv.abi) $('abiText').textContent = kv.abi;
 
     var b = $('toggleBtn');
@@ -990,7 +993,7 @@
       d.textContent = date || '-';
       row.appendChild(name);
       row.appendChild(d);
-      if (ver === cur) {
+      if (cur && normVer(ver) === normVer(cur)) {
         var tag = document.createElement('span');
         tag.className = 'chip';
         tag.textContent = '当前';
@@ -1414,6 +1417,13 @@
     barEl.classList.toggle('warn', pct >= 70 && pct < 90);
     barEl.classList.toggle('crit', pct >= 90);
     valEl.textContent = pct;
+  }
+
+  // 二进制自报版本可能是 "4.2.10"、"v4.2.10"、"v4.2.10-2200"，release tag 一般带 v。
+  // 统一抽成 X.Y.Z 再比较，避免一个前缀之差就标不出「当前」。
+  function normVer(v) {
+    var m = String(v == null ? '' : v).match(/(\d+)\.(\d+)\.(\d+)/);
+    return m ? (m[1] + '.' + m[2] + '.' + m[3]) : '';
   }
 
   function gb(mb) {
