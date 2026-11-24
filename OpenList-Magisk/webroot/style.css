@@ -364,3 +364,86 @@ button.mini{
   background:var(--err-soft);
 }
 .scanconfirm .hint{color:var(--err);word-break:break-all;margin:0}
+
+/* ── 底部导航（概览/版本/配置/数据/日志） ── */
+body{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
+
+.tabbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:60;
+  display:flex;align-items:stretch;
+  background:var(--glass-strong);
+  border-top:1px solid var(--line);
+  box-shadow:0 -8px 28px rgba(15,23,42,.07);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  padding:6px 6px calc(6px + env(safe-area-inset-bottom));
+}
+.tab{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  border:0;background:none;cursor:pointer;font-family:inherit;font-size:11px;
+  color:var(--sub);padding:6px 2px;border-radius:14px;
+  transition:color .18s ease,background .18s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.tab svg{width:22px;height:22px;transition:transform .2s cubic-bezier(.22,1,.36,1)}
+.tab.on{color:var(--primary);background:var(--primary-soft)}
+.tab.on svg{transform:translateY(-2px) scale(1.08)}
+.tab:active svg{transform:scale(.9)}
+
+/* 面板切换：body 上带 data-tab 时只显示对应分区 */
+body[data-tab="overview"] [data-tab]:not([data-tab="overview"]),
+body[data-tab="version"]  [data-tab]:not([data-tab="version"]),
+body[data-tab="config"]   [data-tab]:not([data-tab="config"]),
+body[data-tab="data"]     [data-tab]:not([data-tab="data"]),
+body[data-tab="log"]      [data-tab]:not([data-tab="log"]){display:none}
+
+/* ── 仪表盘 ── */
+.dash{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:10px}
+.gauge{
+  display:flex;flex-direction:column;align-items:center;
+  background:var(--glass);border:1px solid var(--glass-border);
+  border-radius:20px;padding:10px 4px 9px;box-shadow:var(--shadow),var(--inner);
+  backdrop-filter:blur(14px) saturate(160%);
+  -webkit-backdrop-filter:blur(14px) saturate(160%);
+  animation:gaugeIn .45s cubic-bezier(.22,1,.36,1) both;
+}
+.gauge:nth-child(2){animation-delay:.06s}
+.gauge:nth-child(3){animation-delay:.12s}
+@keyframes gaugeIn{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+
+.g-wrap{position:relative;width:100%;max-width:86px;aspect-ratio:1/1}
+.g-wrap svg{display:block;width:100%;height:100%;transform:rotate(-90deg)}
+.g-track{fill:none;stroke:var(--line);stroke-width:9}
+.g-bar{
+  fill:none;stroke:var(--primary);stroke-width:9;stroke-linecap:round;
+  stroke-dasharray:326.73;stroke-dashoffset:326.73;
+  transition:stroke-dashoffset .85s cubic-bezier(.22,1,.36,1),stroke .35s ease;
+}
+.g-bar.mem{stroke:var(--primary-2)}
+.g-bar.disk{stroke:var(--ok)}
+.g-bar.warn{stroke:var(--warn)}
+.g-bar.crit{stroke:var(--err)}
+.g-txt{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  gap:1px;font-size:17px;font-weight:700;letter-spacing:-.6px;
+  color:var(--text);font-variant-numeric:tabular-nums;pointer-events:none;
+}
+.g-txt i{font-size:10px;font-style:normal;font-weight:600;color:var(--sub);margin-top:3px}
+.g-name{margin-top:6px;font-size:12px;font-weight:600;color:var(--text)}
+.g-sub{margin-top:1px;font-size:10px;color:var(--sub);font-variant-numeric:tabular-nums}
+
+.dash-sub{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:14px;
+  animation:gaugeIn .45s cubic-bezier(.22,1,.36,1) .18s both;
+}
+.dash-sub .stat{
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+  padding:8px 6px;text-align:center;box-shadow:var(--inner);
+}
+.dash-sub .stat span{display:block;font-size:10px;color:var(--sub);margin-bottom:3px}
+.dash-sub .stat b{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+
+@media (max-width:360px){
+  .g-txt{font-size:15px}
+  .g-wrap{max-width:74px}
+}

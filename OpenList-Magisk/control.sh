@@ -124,6 +124,83 @@ if [ -f "$MIRROR_CONF" ]; then
     [ -n "$_mu" ] && MIRROR_URL="$_mu"
 fi
 
+# ---------- 仪表盘数据 ----------
+# CPU 使用率必须取两次 /proc/stat 的差值：里面是开机以来的累计节拍数。
+# 这里睡 0.3 秒再采一次，够算出一个像样的瞬时值，又不会让命令卡太久。
+cmd_stats() {
+    local t1 i1 t2 i2 dt di cpu_pct
+    local mt ma mu mp
+    local l1 l5 l15
+    local dtotal dused dpct
+    local up pid
+
+    read_cpu() {
+        awk '/^cpu /{tot=0; for (i=2;i<=NF;i++) tot+=$i; print tot, $5+$6; exit}' /proc/stat 2>/dev/null
+    }
+
+    set -- $(read_cpu)
+    t1="${1:-0}"; i1="${2:-0}"
+    sleep 0.3
+    set -- $(read_cpu)
+    t2="${1:-0}"; i2="${2:-0}"
+
+    dt=$((t2 - t1))
+    di=$((i2 - i1))
+    if [ "$dt" -gt 0 ]; then
+        cpu_pct=$(( (dt - di) * 100 / dt ))
+    else
+        cpu_pct=0
+    fi
+    [ "$cpu_pct" -lt 0 ] && cpu_pct=0
+    [ "$cpu_pct" -gt 100 ] && cpu_pct=100
+
+    mt="$(awk '/^MemTotal:/{print int($2/1024); exit}' /proc/meminfo 2>/dev/null)"
+    ma="$(awk '/^MemAvailable:/{print int($2/1024); exit}' /proc/meminfo 2>/dev/null)"
+    mt="${mt:-0}"; ma="${ma:-0}"
+    if [ "$mt" -gt 0 ] && [ "$ma" -le "$mt" ]; then
+        mu=$((mt - ma))
+        mp=$((mu * 100 / mt))
+    else
+        mu=0; mp=0
+    fi
+
+    l1=0; l5=0; l15=0
+    if [ -r /proc/loadavg ]; then
+        set -- $(cat /proc/loadavg 2>/dev/null)
+        l1="${1:-0}"; l5="${2:-0}"; l15="${3:-0}"
+    fi
+
+    dtotal=0; dused=0; dpct=0
+    if [ -d "$DATA_DIR" ]; then
+        set -- $(df -k "$DATA_DIR" 2>/dev/null | awk 'NR==2{print int($2/1024), int($3/1024)}')
+        dtotal="${1:-0}"; dused="${2:-0}"
+        if [ "$dtotal" -gt 0 ]; then
+            dpct=$((dused * 100 / dtotal))
+        fi
+    fi
+
+    up="$(awk '{print int($1); exit}' /proc/uptime 2>/dev/null)"
+    up="${up:-0}"
+
+    pid="$(openlist_pid)"
+
+    kv cpu "$cpu_pct"
+    kv mem_total "$mt"
+    kv mem_used "$mu"
+    kv mem_percent "$mp"
+    kv disk_total "$dtotal"
+    kv disk_used "$dused"
+    kv disk_percent "$dpct"
+    kv load1 "$l1"
+    kv load5 "$l5"
+    kv load15 "$l15"
+    kv uptime "$up"
+    kv cores "$(nproc 2>/dev/null || echo 1)"
+    kv running "$([ -n "$pid" ] && echo 1 || echo 0)"
+    kv pid "${pid:--}"
+    kv result ok
+}
+
 # ---------- 通道与版本 ----------
 # module.prop 里的 version / versionCode 在两条通道含义不同：
 #   binary 通道（4 个架构包）→ 就是 OpenList 二进制版本，换二进制要跟着改
@@ -1669,6 +1746,7 @@ cmd="${1:-}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
     status) cmd_status ;;
+    stats) cmd_stats ;;
     start) cmd_start ;;
     stop) cmd_stop ;;
     restart) cmd_restart ;;

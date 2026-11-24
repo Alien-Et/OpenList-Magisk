@@ -116,6 +116,15 @@
     } else if (a.indexOf('check') === 0) {
       kv = { current: 'v4.2.10', latest: 'v4.2.10', asset: 'openlist-android-arm64.tar.gz',
              abi: 'arm64-v8a', up_to_date: '1', result: 'ok' };
+    } else if (a.indexOf('stats') === 0) {
+      // 预览用：数值随机抖动，看起来像真在跑
+      var rnd = function (base, span) { return String(base + Math.round(Math.random() * span)); };
+      kv = {
+        cpu: rnd(8, 34), mem_total: '15135', mem_used: '9313', mem_percent: '61',
+        disk_total: '467383', disk_used: '388813', disk_percent: '83',
+        load1: '0.42', load5: '0.35', load15: '0.28',
+        uptime: '86400', cores: '8', running: '1', pid: '21874', result: 'ok'
+      };
     }
     out.push('result=' + (kv.result || 'ok'));
     return { raw: { errno: 0, stdout: out.join('\n'), stderr: '' }, kv: kv };
@@ -1394,6 +1403,118 @@
     });
   }
 
+  /* ---------- 仪表盘 ---------- */
+  // 环形进度：半径 52 → 周长 2πr ≈ 326.73，用 stroke-dashoffset 控制填充比例
+  var GAUGE_C = 326.73;
+
+  function gauge(barEl, valEl, pct) {
+    if (!barEl || !valEl) return;
+    pct = Math.max(0, Math.min(100, Math.round(+pct || 0)));
+    barEl.style.strokeDashoffset = String(GAUGE_C * (1 - pct / 100));
+    barEl.classList.toggle('warn', pct >= 70 && pct < 90);
+    barEl.classList.toggle('crit', pct >= 90);
+    valEl.textContent = pct;
+  }
+
+  function gb(mb) {
+    mb = +mb || 0;
+    return mb >= 1024 ? (mb / 1024).toFixed(1) + 'G' : mb + 'M';
+  }
+
+  function fmtUptime(s) {
+    s = +s || 0;
+    if (!s) return '-';
+    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    if (d) return d + '天' + h + '时';
+    if (h) return h + '时' + m + '分';
+    return m + '分';
+  }
+
+  function renderStats(kv) {
+    gauge($('barCpu'), $('valCpu'), kv.cpu);
+    gauge($('barMem'), $('valMem'), kv.mem_percent);
+    gauge($('barDisk'), $('valDisk'), kv.disk_percent);
+
+    var cores = kv.cores || '?';
+    $('cpuDetail').textContent = cores + ' 核';
+
+    var mt = +kv.mem_total || 0, mu = +kv.mem_used || 0;
+    $('memDetail').textContent = mt ? (gb(mu) + ' / ' + gb(mt)) : '-';
+
+    var dt = +kv.disk_total || 0, du = +kv.disk_used || 0;
+    $('diskDetail').textContent = dt ? (gb(du) + ' / ' + gb(dt)) : '-';
+
+    $('loadText').textContent = [kv.load1 || '0', kv.load5 || '0', kv.load15 || '0'].join(' / ');
+    $('uptimeText').textContent = fmtUptime(kv.uptime);
+    $('coresText').textContent = cores;
+  }
+
+  var statsTimer = null;
+
+  function loadStats() {
+    if (document.hidden) return Promise.resolve();
+    if (document.body.getAttribute('data-tab') !== 'overview') return Promise.resolve();
+    return ctl('stats', 20000).then(function (r) {
+      if (r.kv && r.kv.result === 'ok') renderStats(r.kv);
+    }).catch(function () { /* 单次失败不打扰用户，下个周期再试 */ });
+  }
+
+  function startStats() {
+    if (statsTimer) return;
+    loadStats();
+    statsTimer = setInterval(loadStats, 4000);
+  }
+
+  function stopStats() {
+    if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+  }
+
+  /* ---------- 底部导航 ---------- */
+  var TAB_KEY = 'openlist.tab';
+  var TAB_NAMES = ['overview', 'version', 'config', 'data', 'log'];
+
+  function onTabEnter(tab) {
+    if (tab === 'overview') startStats(); else stopStats();
+    if (tab === 'version') { loadVersions(); checkUpdate(true); }
+    else if (tab === 'config') loadConfig();
+    else if (tab === 'data') { loadScan(); loadStorages(); loadTasks(); }
+    else if (tab === 'log') loadLog();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function initTabs() {
+    var bar = $('tabbar');
+    if (!bar) return;
+    var btns = bar.querySelectorAll('.tab');
+
+    function apply(tab) {
+      if (TAB_NAMES.indexOf(tab) < 0) tab = 'overview';
+      document.body.setAttribute('data-tab', tab);
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle('on', btns[i].getAttribute('data-tab') === tab);
+      }
+      try { localStorage.setItem(TAB_KEY, tab); } catch (e) {}
+    }
+
+    for (var i = 0; i < btns.length; i++) {
+      (function (btn) {
+        btn.onclick = function () {
+          var tab = btn.getAttribute('data-tab');
+          apply(tab);
+          onTabEnter(tab);
+        };
+      })(btns[i]);
+    }
+
+    var saved = '';
+    try { saved = localStorage.getItem(TAB_KEY) || ''; } catch (e) {}
+    var start = TAB_NAMES.indexOf(saved) >= 0 ? saved : 'overview';
+    apply(start);
+    // 初始不重复触发 onTabEnter 的加载（init 里已经全量拉过一轮），
+    // 只保证概览页的仪表盘轮询起来
+    if (start === 'overview') startStats();
+  }
+
   /* ---------- 绑定 ---------- */
   function init() {
     $('themeBtn').onclick = cycleTheme;
@@ -1491,6 +1612,9 @@
     loadStorages();
     loadTasks();
     loadMirror().then(pingMirrors);
+
+    // 最后接管底部导航 + 启动概览仪表盘轮询
+    initTabs();
   }
 
   if (document.readyState === 'loading') {
